@@ -53,7 +53,7 @@ python tools/verify_source.py
 python tools/build_android.py
 ```
 
-工作流会验证 APK 签名，并在 Android16 模拟器上检查缓存行为、无定时任务、额度解析、OAuth 回调验证、加密存储和多个卡片尺寸。测试不用真实账号。测试包括默认关闭与关闭任务的行为；当前完成情况见 `VALIDATION.md`；通过这些检查不代表已通过 Fold7 实机登录验证。
+[0.2.0 构建已通过](https://github.com/MicHrrrD/quotile/actions/runs/33957345128)：APK 签名验证、Android16 模拟器缓存行为、自动刷新默认关闭与任务取消、额度解析、OAuth 回调验证、加密存储和 24 种卡片绘制组合。测试不用真实账号；完成情况和安装包校验值见 `VALIDATION.md`。通过这些检查不代表已通过 Fold7 实机登录验证。
 
 `bridge/` 保留 0.1.0 的服务端源码，0.2.0 手机版本不依赖它。
 
