@@ -123,6 +123,7 @@ public final class WidgetRenderer {
         else label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 18, secondary);
         float valueTop = top + (small ? 18 : 22);
         float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
+        valueTop += detailContentOffset(valueTop, valueHeight, small);
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop,
                 width < 180 ? contentWidth : contentWidth * .65f, valueHeight, false);
         float barY = valueTop + valueHeight + (small ? 8 : 10);
@@ -147,6 +148,7 @@ public final class WidgetRenderer {
         float top = height > 200 ? 22 : small ? 10 : 16;
         float valueTop = top + (small ? 18 : 22);
         float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
+        valueTop += detailContentOffset(valueTop, valueHeight, small);
         sourceLabel("Codex 额度 · 每周", pad, top, column, 18);
         label(R.id.widget_secondary_label, "5 小时剩余", secondX, top, width - secondX - 49, 18, secondary);
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop, column, valueHeight, false);
@@ -163,6 +165,15 @@ public final class WidgetRenderer {
         } else if (refreshing || old() || state.demo) {
             label(R.id.widget_reset, status(), pad, resetY, column, 16, secondary);
         }
+    }
+
+    private float detailContentOffset(float valueTop, float valueHeight, boolean small) {
+        if (height < 142) return 0;
+        float resetY = valueTop + valueHeight + (small ? 8 : 10) + (small ? 9 : 11) + 9;
+        float footerY = Math.min(height - 20, Math.max(resetY + 18, height - 25));
+        // Move only the main content into spare vertical space. Keep the update line
+        // anchored and preserve at least the existing two-dp gap on shorter cards.
+        return Math.min(10, Math.max(0, footerY - resetY - 18));
     }
 
     private void unconfigured() {

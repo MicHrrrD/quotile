@@ -26,7 +26,7 @@ final class WidgetFooterTests {
     static void run(Instrumentation instrumentation, Context app, File previews) {
         for (float scale : new float[]{1f, 1.3f, 2f})
             renderCase(instrumentation, app, previews, 350, 64, scale, false);
-        for (int height : new int[]{142, 150})
+        for (int height : new int[]{142, 150, 180})
             for (float scale : new float[]{1f, 1.3f})
                 for (boolean dual : new boolean[]{false, true})
                     renderCase(instrumentation, app, previews, 350, height, scale, dual);
