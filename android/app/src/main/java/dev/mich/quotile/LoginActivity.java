@@ -153,10 +153,10 @@ public final class LoginActivity extends Activity {
         boolean dark = "dark".equals(store.theme()) || ("system".equals(store.theme())
                 && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES);
-        int background = Color.parseColor(dark ? "#1A2420" : "#F3F6F3");
-        int foreground = Color.parseColor(dark ? "#EDF4ED" : "#1D3029");
-        int muted = Color.parseColor(dark ? "#ADBEB3" : "#65766D");
-        int accent = Color.parseColor(dark ? "#A9D9BD" : "#31694E");
+        int background = Color.parseColor(dark ? "#242424" : "#F7F7F8");
+        int foreground = Color.parseColor(dark ? "#F3F3F3" : "#181818");
+        int muted = Color.parseColor(dark ? "#ADADAD" : "#6B6B6B");
+        int accent = Color.parseColor(dark ? "#F3F3F3" : "#181818");
         getWindow().setDecorFitsSystemWindows(false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
@@ -208,7 +208,7 @@ public final class LoginActivity extends Activity {
         closeButton.setAllCaps(false);
         closeButton.setTextColor(accent);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(Color.parseColor(dark ? "#31483A" : "#E1EEE3"));
+        shape.setColor(Color.parseColor(dark ? "#333333" : "#EFEFF0"));
         shape.setCornerRadius(dp(16));
         closeButton.setBackground(shape);
         closeButton.setOnClickListener(view -> finish());

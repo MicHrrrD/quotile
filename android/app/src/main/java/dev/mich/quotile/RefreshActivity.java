@@ -14,7 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-/** One quota request, entered only by an intentional tap in the app or home widget. */
+/** One quota request, entered only by an intentional tap in the app settings screen. */
 public final class RefreshActivity extends Activity {
     public static final String ACTION_USER_REFRESH = "dev.mich.quotile.USER_REFRESH";
     private TextView status;
@@ -74,15 +74,15 @@ public final class RefreshActivity extends Activity {
         boolean dark = "dark".equals(store.theme()) || ("system".equals(store.theme())
                 && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES);
-        int foreground = Color.parseColor(dark ? "#EDF4ED" : "#1D3029");
-        int muted = Color.parseColor(dark ? "#ADBEB3" : "#65766D");
-        int accent = Color.parseColor(dark ? "#A9D9BD" : "#31694E");
+        int foreground = Color.parseColor(dark ? "#F3F3F3" : "#181818");
+        int muted = Color.parseColor(dark ? "#ADADAD" : "#6B6B6B");
+        int accent = Color.parseColor(dark ? "#F3F3F3" : "#181818");
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER_HORIZONTAL);
         card.setPadding(dp(24), dp(26), dp(24), dp(22));
         GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.parseColor(dark ? "#1A2420" : "#F3F6F3"));
+        background.setColor(Color.parseColor(dark ? "#242424" : "#F7F7F8"));
         background.setCornerRadius(dp(25));
         card.setBackground(background);
         TextView title = new TextView(this);
@@ -112,7 +112,7 @@ public final class RefreshActivity extends Activity {
         closeButton.setTextSize(14);
         closeButton.setTextColor(accent);
         GradientDrawable buttonBackground = new GradientDrawable();
-        buttonBackground.setColor(Color.parseColor(dark ? "#31483A" : "#E1EEE3"));
+        buttonBackground.setColor(Color.parseColor(dark ? "#333333" : "#EFEFF0"));
         buttonBackground.setCornerRadius(dp(14));
         closeButton.setBackground(buttonBackground);
         closeButton.setOnClickListener(view -> finish());

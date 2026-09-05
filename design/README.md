@@ -1,15 +1,9 @@
-# 余量 · 设计预览
+# 小组件外观
 
-- `quotile_design_preview.png`：浅色、深色的 1×5 和 2×5 布局，以及缩窄布局。
-- `quotile_state_preview.png`：未连接、来源未提供、旧数据及超过重置时间的显示。
-- `render_previews.py`：用 Pillow 按 `WidgetRenderer.java` 的 dp 尺寸及断点绘制。
+0.3.0 使用原生 Android 布局。当前基准为 `android/app/src/main/java/dev/mich/quotile/WidgetRenderer.java` 与 `android/app/src/main/res/layout/widget.xml`。
 
-这些图片是设计预览，数字和情景均为演示，不是手机或模拟器截图。中文字体与 Android 系统字体的度量可能不同。`preview_checks.json` 仅记录 Python 预览的文本边界检查，不代表 Android 编译、启动器兼容或设备测试通过。
+柔白 #F7F7F8、近黑 #181818、9–11dp 胶囊进度条。1×5 与 2×5 指高×宽；桌面控件直接按启动器尺寸布局，不再缩放整张图片。
 
-如需重新生成，使用本机已安装的中文字体：
+最新构建会在 Android16 上导出 `android-previews/*.png`，随 Actions 产物提供；它们来自实际原生控件与合成演示数据。
 
-```sh
-QUOTILE_PREVIEW_FONT=/path/to/NotoSansSC.ttf python3 render_previews.py
-```
-
-实际小组件支持 110–700 dp 宽、40–300 dp 高；宽至少 250 dp 且高至少 116 dp 时使用详细布局，仅在来源提供 5 小时额度时显示双栏。网格的 1×5、2×5 指高×宽，实际 dp 值由启动器决定。
+本目录既有 `quotile_design_preview.png`、`quotile_state_preview.png` 和 `render_previews.py` 属于 0.1.0 历史设计，保留用于追溯，不代表 0.3.0 成品。

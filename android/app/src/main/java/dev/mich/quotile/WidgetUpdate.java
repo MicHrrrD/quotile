@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.SizeF;
-import android.util.TypedValue;
 import android.widget.RemoteViews;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -57,30 +56,27 @@ public final class WidgetUpdate {
             RemoteViews landscape = view(c, id, info.provider, maxW, minH, state, dark);
             m.updateAppWidget(id, new RemoteViews(landscape, portrait));
         } catch (IllegalArgumentException memoryOrLauncher) {
-            // Bound memory on launchers with anomalous dimension reports.
+            // Fall back for launchers with anomalous dimension reports.
             m.updateAppWidget(id, view(c, id, info.provider, 300, detail ? 140 : 64, state, dark));
         }
     }
     private static RemoteViews view(Context c, int id, ComponentName provider, int width, int height, WidgetState state, boolean dark) {
         width = Math.max(110, Math.min(width, 700));
         height = Math.max(40, Math.min(height, 300));
-        RemoteViews rv = new RemoteViews(c.getPackageName(), R.layout.widget);
-        rv.setImageViewBitmap(R.id.widget_image, WidgetRenderer.render(c, width, height, state, dark));
+        RemoteViews rv = WidgetRenderer.remoteViews(c, width, height, state, dark, QuotaSync.isRunning());
         rv.setContentDescription(R.id.widget_root, description(state));
         Intent open = new Intent(c, MainActivity.class);
         rv.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-        Intent refresh = new Intent(c, RefreshActivity.class).setAction(RefreshActivity.ACTION_USER_REFRESH);
+        Intent refresh = new Intent(c, WidgetRefreshReceiver.class).setAction(WidgetRefreshReceiver.ACTION_REFRESH);
         refresh.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
-        PendingIntent refreshAction = !state.configured
-                ? PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
-                : PendingIntent.getActivity(c, id, refresh, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent refreshAction = PendingIntent.getBroadcast(c, id, refresh,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         rv.setOnClickPendingIntent(R.id.widget_refresh, refreshAction);
-        rv.setViewLayoutHeight(R.id.widget_refresh, height < 116 ? height : 44, TypedValue.COMPLEX_UNIT_DIP);
         return rv;
     }
     private static String description(WidgetState s) {
         if (!s.configured) return "余量，待连接，点按打开设置";
-        String status = s.demo ? "演示数据。" : (s.stale ? "旧数据，待手动刷新。" : "上次读取的额度。");
+        String status = QuotaSync.isRunning() ? "正在刷新。" : s.demo ? "演示数据。" : (s.stale ? "旧数据，待手动刷新。" : "上次读取的额度。");
         return status + "每周剩余" + amount(s.weeklyRemaining) + "，五小时剩余" + amount(s.fiveHourRemaining)
                 + "。点按打开设置，右侧按钮刷新。";
     }

@@ -20,6 +20,7 @@
             android:configChanges="orientation|screenSize|smallestScreenSize" />
         <activity android:name=".RefreshActivity" android:exported="false"
             android:theme="@style/RefreshTheme" />
+        <receiver android:name=".WidgetRefreshReceiver" android:exported="false" />
         <receiver android:name=".SlimWidgetProvider" android:label="余量 · 1×5" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_slim" />

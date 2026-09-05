@@ -1,9 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent">
-    <ImageView android:id="@+id/widget_image" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:scaleType="fitXY" android:importantForAccessibility="no" />
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_background" android:clipToOutline="true"
+    android:layoutDirection="ltr" android:importantForAccessibility="yes">
+    <TextView android:id="@+id/widget_label" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="13sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="10sp"
+        android:autoSizeMaxTextSize="13sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_value" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif-medium" android:textColor="#181818" android:textSize="64sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14sp"
+        android:autoSizeMaxTextSize="64sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_reset" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="11sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="9sp"
+        android:autoSizeMaxTextSize="11sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_secondary_label" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="13sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="10sp"
+        android:autoSizeMaxTextSize="13sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_secondary_value" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif-medium" android:textColor="#181818" android:textSize="64sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14sp"
+        android:autoSizeMaxTextSize="64sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_secondary_reset" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="11sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="9sp"
+        android:autoSizeMaxTextSize="11sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_status" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="11sp"
+        android:maxLines="1" android:singleLine="true" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="9sp"
+        android:autoSizeMaxTextSize="11sp" android:autoSizeStepGranularity="1sp"
+        android:importantForAccessibility="no" />
+    <ProgressBar android:id="@+id/widget_progress" style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone"
+        android:minHeight="0dp" android:maxHeight="300dp" android:padding="0dp"
+        android:indeterminate="false" android:indeterminateOnly="false" android:max="10000"
+        android:progressDrawable="@drawable/widget_progress" android:importantForAccessibility="no" />
+    <ProgressBar android:id="@+id/widget_secondary_progress" style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone"
+        android:minHeight="0dp" android:maxHeight="300dp" android:padding="0dp"
+        android:indeterminate="false" android:indeterminateOnly="false" android:max="10000"
+        android:progressDrawable="@drawable/widget_progress" android:importantForAccessibility="no" />
     <ImageButton android:id="@+id/widget_refresh" android:layout_width="44dp" android:layout_height="44dp"
-        android:layout_gravity="top|right" android:background="@android:color/transparent"
-        android:contentDescription="刷新额度" />
+        android:background="@drawable/widget_refresh_background" android:src="@drawable/ic_widget_refresh"
+        android:padding="11dp" android:scaleType="fitCenter" android:contentDescription="在桌面刷新额度" />
 </FrameLayout>

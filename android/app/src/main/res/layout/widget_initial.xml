@@ -4,7 +4,7 @@
     android:background="@drawable/widget_background" android:gravity="center_vertical"
     android:orientation="horizontal" android:padding="18dp">
     <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-        android:text="余量" android:textColor="#183D34" android:textSize="18sp" />
+        android:text="余量" android:textColor="#181818" android:textSize="18sp" />
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:text="待连接" android:textColor="#65796F" android:textSize="14sp" />
+        android:text="待登录" android:textColor="#707070" android:textSize="14sp" />
 </LinearLayout>

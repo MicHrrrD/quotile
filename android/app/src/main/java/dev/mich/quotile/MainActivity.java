@@ -112,13 +112,13 @@ public final class MainActivity extends Activity {
     }
 
     private void setPalette() {
-        background = Color.parseColor(dark ? "#111816" : "#F3F6F3");
-        surface = Color.parseColor(dark ? "#1A2420" : "#FFFFFF");
-        foreground = Color.parseColor(dark ? "#EDF4ED" : "#1D3029");
-        muted = Color.parseColor(dark ? "#ADBEB3" : "#65766D");
-        accent = Color.parseColor(dark ? "#A9D9BD" : "#31694E");
-        accentBackground = Color.parseColor(dark ? "#31483A" : "#E1EEE3");
-        inputBackground = Color.parseColor(dark ? "#111B16" : "#F5F8F5");
+        background = Color.parseColor(dark ? "#181818" : "#F7F7F8");
+        surface = Color.parseColor(dark ? "#242424" : "#FFFFFF");
+        foreground = Color.parseColor(dark ? "#F3F3F3" : "#181818");
+        muted = Color.parseColor(dark ? "#ADADAD" : "#6B6B6B");
+        accent = foreground;
+        accentBackground = Color.parseColor(dark ? "#333333" : "#EFEFF0");
+        inputBackground = Color.parseColor(dark ? "#1E1E1E" : "#F7F7F8");
     }
 
     private void buildScreen() {
@@ -171,7 +171,7 @@ public final class MainActivity extends Activity {
         LinearLayout account = card();
         page.addView(account, space(-1, -2, 23));
         account.addView(text("Codex 套餐额度", 17, foreground, true));
-        account.addView(text("本地接入测试版", 12, accent, true), space(-1, -2, 6));
+        account.addView(text("手机本地读取", 12, muted, false), space(-1, -2, 6));
         accountView = text("", 14, foreground, false);
         account.addView(accountView, space(-1, -2, 17));
         account.addView(text("在手机浏览器登录 ChatGPT，登录状态保存在本机。", 13, muted, false), space(-1, -2, 8));
@@ -493,7 +493,7 @@ public final class MainActivity extends Activity {
             case "account_changed":
                 return "登录状态已变化，请重新点击刷新";
             case "read_cancelled":
-                return "本次自动刷新已取消，可手动重新读取";
+                return "本次刷新已取消，可手动重新读取";
             default:
                 return "更新未完成，请稍后手动重试";
         }
@@ -558,7 +558,7 @@ public final class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setTextSize(14);
         button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        button.setTextColor(primary ? (dark ? Color.parseColor("#152C20") : Color.WHITE) : accent);
+        button.setTextColor(primary ? (dark ? Color.parseColor("#181818") : Color.WHITE) : accent);
         button.setBackground(rounded(primary ? accent : accentBackground, 16));
         button.setStateListAnimator(null);
         button.setMinWidth(0);

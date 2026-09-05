@@ -19,3 +19,15 @@ output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/d
 if 'INSTRUMENTATION_CODE: -1' not in output or 'PASS: settings launch' not in output or 'FAIL:' in output:
     raise RuntimeError('Manual-mode instrumentation did not pass')
 print('Android 16 manual-mode verification passed.')
+preview_dir=ROOT/'design/android-previews'
+preview_dir.mkdir(parents=True,exist_ok=True)
+names=run(['adb','shell','run-as','dev.mich.quotile','ls','files/widget-previews']).splitlines()
+for name in names:
+    if not name.endswith('.png') or '/' in name or name.startswith('.'):
+        raise RuntimeError('Unexpected native preview name')
+    result=subprocess.run(['adb','exec-out','run-as','dev.mich.quotile','cat','files/widget-previews/'+name],
+                          capture_output=True,check=True,timeout=15)
+    if not result.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise RuntimeError('Native preview is not a PNG')
+    (preview_dir/name).write_bytes(result.stdout)
+print('Saved native Android widget renders for visual review.')

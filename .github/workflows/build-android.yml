@@ -33,8 +33,8 @@ jobs:
         run: python tools/build_android.py
       - name: Verify APK signature and manifest
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Quotile-0.2.0.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Quotile-0.2.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Quotile-0.3.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Quotile-0.3.0.apk
       - name: Build manual-mode instrumentation
         run: gradle --no-daemon --console=plain -p android :app:assembleDebugAndroidTest
       - name: Free disk space for the Android emulator
@@ -58,14 +58,22 @@ jobs:
           emulator-boot-timeout: 300
           disable-animations: true
           script: python tools/check_manual_android.py
-      - name: Upload APK
+      - name: Package official signing tool
+        run: |
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" dist/apksigner.jar
+          sha256sum dist/Quotile-0.3.0.apk dist/apksigner.jar > dist/build-sha256.txt
+      - name: Upload tested build and preview images
         uses: actions/upload-artifact@v4
         with:
-          name: Quotile-0.2.0-debug
-          path: dist/Quotile-0.2.0.apk
+          name: Quotile-0.3.0-build
+          path: |
+            dist/Quotile-0.3.0.apk
+            dist/apksigner.jar
+            dist/build-sha256.txt
+            design/android-previews/*.png
           if-no-files-found: error
           retention-days: 14
-      - name: Note signing limitation
+      - name: Note delivery signing
         run: |
-          echo '### Debug signing' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Each clean runner creates a new debug key. APKs from different runs may require uninstalling the previous app, which clears its local settings. A stable release signing key is needed for reliable updates.' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Delivery signing' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The build artifact contains a tested debug APK and the official Build Tools 35.0.0 signing JAR. Final delivery is signed locally with a separately retained private key using tools/sign_apk.py. Private signing material is never stored in this workflow or uploaded to the repository. The v0.2.0 ephemeral debug key is unavailable, so its installed app must be removed once before switching keys.' >> "$GITHUB_STEP_SUMMARY"

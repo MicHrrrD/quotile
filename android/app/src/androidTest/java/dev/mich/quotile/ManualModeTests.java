@@ -8,6 +8,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+import android.widget.ProgressBar;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /** On-device checks with no real credentials and no network fixtures. */
 public final class ManualModeTests extends Instrumentation {
@@ -48,28 +60,51 @@ public final class ManualModeTests extends Instrumentation {
             new DetailWidgetProvider().onUpdate(app, AppWidgetManager.getInstance(app), new int[0]);
             require(!QuotaSync.isRunning(), "Launcher updates must render cached data only");
             require(store.state().updatedAt == 0, "Opening/adding widgets must not invent a read timestamp");
+            Activity finished = activity;
+            runOnMainSync(finished::finish);
+            activity = null;
+            waitForIdleSync();
+            ActivityMonitor monitor = addMonitor(MainActivity.class.getName(), null, false);
+            ActivityMonitor refreshMonitor = addMonitor(RefreshActivity.class.getName(), null, false);
+            CountDownLatch handled = new CountDownLatch(1);
+            app.sendOrderedBroadcast(new Intent(app, WidgetRefreshReceiver.class)
+                    .setAction(WidgetRefreshReceiver.ACTION_REFRESH), null,
+                    new BroadcastReceiver() {
+                        @Override public void onReceive(Context c, Intent i) { handled.countDown(); }
+                    }, new Handler(Looper.getMainLooper()), 0, null, null);
+            require(handled.await(5,TimeUnit.SECONDS),"Widget refresh broadcast must finish while signed out");
+            waitForIdleSync();
+            require(monitor.getHits()==0 && refreshMonitor.getHits()==0,
+                    "Widget refresh must not launch an Activity");
+            removeMonitor(monitor);
+            removeMonitor(refreshMonitor);
+            require(!QuotaSync.isRunning(),"Signed-out widget refresh must not leave a worker");
+            require(app.getSystemService(JobScheduler.class).getAllPendingJobs().isEmpty(),
+                    "Manual widget refresh must not create scheduled jobs");
+            File previews = new File(app.getFilesDir(),"widget-previews");
+            require(previews.isDirectory() || previews.mkdirs(),"Preview directory");
             int[][] sizes = {{350,64},{350,150},{700,150},{160,150},{110,40},{110,64}};
             for (boolean dark : new boolean[]{false,true}) {
                 for (int[] size : sizes) {
                     WidgetState demo = QuotaStore.demoState();
-                    Bitmap bitmap = WidgetRenderer.render(app,size[0],size[1],demo,dark);
+                    Bitmap bitmap = nativeRender(app,size[0],size[1],demo,dark);
                     require(bitmap.getWidth()>0 && bitmap.getHeight()>0,"Widget must render");
+                    savePreview(bitmap,previews,(dark?"dark":"light")+"-"+size[0]+"x"+size[1]+"-dual.png");
                     bitmap.recycle();
                     demo.fiveHourRemaining = null;
                     demo.fiveHourResetAt = 0;
-                    bitmap = WidgetRenderer.render(app,size[0],size[1],demo,dark);
+                    bitmap = nativeRender(app,size[0],size[1],demo,dark);
                     require(bitmap.getWidth()>0 && bitmap.getHeight()>0,"Weekly-only widget must render");
+                    savePreview(bitmap,previews,(dark?"dark":"light")+"-"+size[0]+"x"+size[1]+"-weekly.png");
                     bitmap.recycle();
                 }
             }
             store.savePreferences("dark", false);
-            Activity old = activity;
-            runOnMainSync(old::finish);
             activity = startActivitySync(new Intent(app, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
             require(!QuotaSync.isRunning(),"Reopening/theme change must not refresh");
             require(app.getSystemService(JobScheduler.class).getAllPendingJobs().isEmpty(),"Theme/launcher must not schedule");
-            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; 24 Android Canvas widget render cases; OAuth callback, PKCE, quota parser and encrypted vault checks passed.\n");
+            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 native widget render cases; OAuth callback, PKCE, quota parser and encrypted vault checks passed.\n");
             resultCode = Activity.RESULT_OK;
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + error.getClass().getSimpleName()+": "+error.getMessage()+"\n");
@@ -77,5 +112,28 @@ public final class ManualModeTests extends Instrumentation {
             if(activity!=null) { Activity last=activity; runOnMainSync(last::finish); }
         }
         finish(resultCode,result);
+    }
+    private static void savePreview(Bitmap bitmap,File directory,String name) throws Exception {
+        try(FileOutputStream output=new FileOutputStream(new File(directory,name))) {
+            require(bitmap.compress(Bitmap.CompressFormat.PNG,100,output),"Write native render preview");
+        }
+    }
+    private Bitmap nativeRender(Context app,int width,int height,WidgetState state,boolean dark) {
+        Bitmap[] result = new Bitmap[1];
+        Throwable[] failure = new Throwable[1];
+        runOnMainSync(() -> {
+            try {
+                View view=WidgetRenderer.remoteViews(app,width,height,state,dark,false).apply(app,null);
+                require(view.findViewById(R.id.widget_value) instanceof TextView,
+                        "Delivered widget text must be a native TextView");
+                require(view.findViewById(R.id.widget_progress) instanceof ProgressBar,
+                        "Delivered widget bar must be a native ProgressBar");
+                result[0]=WidgetRenderer.render(app,width,height,state,dark);
+                int expected=Math.round(width*app.getResources().getDisplayMetrics().density);
+                require(Math.abs(result[0].getWidth()-expected)<=1,"Preview must use device pixel density");
+            } catch(Throwable error) { failure[0]=error; }
+        });
+        if(failure[0]!=null) throw new AssertionError("Native widget inflation/render failed",failure[0]);
+        return result[0];
     }
 }
