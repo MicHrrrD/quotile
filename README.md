@@ -2,7 +2,7 @@
 
 为 Android 桌面制作的个人套餐额度小组件。以三星 Galaxy Z Fold7 为主要适配目标，使用原生 Android 小组件，可在内外屏的不同可用尺寸间切换布局。
 
-**当前交付是源码工程、同步服务、构建工具和设计预览。尚未生成 APK，也未在 Fold7 上完成安装验证。** 当前运行环境没有 Android SDK，依赖下载请求未获网络放行；Java 语法检查并不等同于 Android 编译通过。真实账号也尚未配对。
+**0.1.0 调试版 APK 已于 2026-09-05 通过 GitHub Actions 编译并生成。** [首次构建与下载](https://github.com/MicHrrrD/quotile/actions/runs/33953005310)。尚未在 Fold7 上完成安装验证，真实账号也尚未配对；安装后可以先使用演示模式检查桌面外观。
 
 ## 外观与尺寸
 
@@ -75,7 +75,7 @@ python tools/verify_source.py
 python -m unittest discover -s bridge/tests -p 'test_*.py' -v
 ```
 
-上线前仍需做 Android SDK 编译和手机测试，尤其是 One UI 的 1×5／2×5 添加、内外屏切换、拖动缩放、深浅色、休眠后刷新、断网恢复、账号首次登录和重置后的数据一致性。
+Android SDK 编译已通过。上线前仍需手机测试，尤其是 One UI 的 1×5／2×5 添加、内外屏切换、拖动缩放、深浅色、休眠后刷新、断网恢复、账号首次登录和重置后的数据一致性。
 
 ## 官方依据
 
