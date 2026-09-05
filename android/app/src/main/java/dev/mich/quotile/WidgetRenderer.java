@@ -67,11 +67,11 @@ public final class WidgetRenderer {
     }
     private String status() {
         if (state.demo) return old() ? "演示 · 旧数据" : "演示数据";
-        if (old()) return "旧数据 · 待同步";
+        if (old()) return "旧数据 · 待刷新";
         if (state.weeklyRemaining == null && state.fiveHourRemaining == null
                 && state.error != null && !state.error.isEmpty()) return "暂未获取额度";
-        if (state.updatedAt <= 0) return "等待首次同步";
-        return date(state.updatedAt, "M/d HH:mm") + " 更新";
+        if (state.updatedAt <= 0) return "点击刷新读取";
+        return date(state.updatedAt, "M/d HH:mm") + " 读取";
     }
     private String date(long seconds, String pattern) {
         SimpleDateFormat format = new SimpleDateFormat(pattern, Locale.CHINA);
@@ -80,7 +80,7 @@ public final class WidgetRenderer {
     }
     private String reset(long seconds, boolean shortForm) {
         if (seconds <= 0) return shortForm ? "重置未提供" : "未提供重置时间";
-        if (expired(seconds)) return shortForm ? "已到期 · 待同步" : "已到重置时间 · 待同步";
+        if (expired(seconds)) return shortForm ? "已到期 · 待刷新" : "已到重置时间 · 待刷新";
         boolean today = date(seconds, "yyyyMMdd").equals(date(now, "yyyyMMdd"));
         return (today ? "今天 " : date(seconds, shortForm ? "M/d " : "M月d日 "))
                 + date(seconds, "HH:mm") + " 重置";

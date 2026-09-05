@@ -16,6 +16,10 @@
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
         </activity>
+        <activity android:name=".LoginActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize" />
+        <activity android:name=".RefreshActivity" android:exported="false"
+            android:theme="@style/RefreshTheme" />
         <receiver android:name=".SlimWidgetProvider" android:label="余量 · 1×5" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_slim" />
@@ -23,14 +27,6 @@
         <receiver android:name=".DetailWidgetProvider" android:label="余量 · 2×5" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_detail" />
-        </receiver>
-        <receiver android:name=".LifecycleReceiver" android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.TIME_SET" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-            </intent-filter>
         </receiver>
         <service android:name=".QuotaJobService" android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="true" />

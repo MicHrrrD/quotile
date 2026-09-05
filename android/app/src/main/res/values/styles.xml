@@ -8,5 +8,11 @@
         <item name="android:windowBackground">#F3F5F2</item>
     </style>
     <string name="slim_description">一行看本周余量 · 高×宽 1×5 · 可自由缩放</string>
-    <string name="detail_description">每周与五小时余量 · 高×宽 2×5 · 可自由缩放</string>
+    <style name="RefreshTheme" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#31694E</item>
+        <item name="android:windowMinWidthMajor">85%</item>
+        <item name="android:windowMinWidthMinor">85%</item>
+    </style>
+    <string name="detail_description">额度详情 · 高×宽 2×5 · 可自由缩放</string>
 </resources>

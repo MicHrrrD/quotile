@@ -69,18 +69,18 @@ public final class WidgetUpdate {
         rv.setContentDescription(R.id.widget_root, description(state));
         Intent open = new Intent(c, MainActivity.class);
         rv.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-        Intent refresh = new Intent(BaseWidgetProvider.REFRESH).setComponent(provider);
+        Intent refresh = new Intent(c, RefreshActivity.class).setAction(RefreshActivity.ACTION_USER_REFRESH);
         refresh.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
         PendingIntent refreshAction = !state.configured
                 ? PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
-                : PendingIntent.getBroadcast(c, id, refresh, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                : PendingIntent.getActivity(c, id, refresh, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         rv.setOnClickPendingIntent(R.id.widget_refresh, refreshAction);
         rv.setViewLayoutHeight(R.id.widget_refresh, height < 116 ? height : 44, TypedValue.COMPLEX_UNIT_DIP);
         return rv;
     }
     private static String description(WidgetState s) {
         if (!s.configured) return "余量，待连接，点按打开设置";
-        String status = s.demo ? "演示数据。" : (s.stale ? "数据待同步。" : "");
+        String status = s.demo ? "演示数据。" : (s.stale ? "旧数据，待手动刷新。" : "上次读取的额度。");
         return status + "每周剩余" + amount(s.weeklyRemaining) + "，五小时剩余" + amount(s.fiveHourRemaining)
                 + "。点按打开设置，右侧按钮刷新。";
     }

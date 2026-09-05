@@ -4,7 +4,7 @@ name: Build Quotile Android APK
 # This file does not create a repository or publish a release.
 on:
   push:
-    branches: [main]
+    branches: [main, mobile-local]
   workflow_dispatch:
 
 permissions:
@@ -31,11 +31,33 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
       - name: Verify sources and build debug APK
         run: python tools/build_android.py
+      - name: Verify APK signature and manifest
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Quotile-0.2.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Quotile-0.2.0.apk
+      - name: Build manual-mode instrumentation
+        run: gradle --no-daemon --console=plain -p android :app:assembleDebugAndroidTest
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Check manual-only behavior on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          ram-size: 3072M
+          disk-size: 3G
+          emulator-boot-timeout: 300
+          disable-animations: true
+          script: python tools/check_manual_android.py
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Quotile-0.1.0-debug
-          path: dist/Quotile-0.1.0.apk
+          name: Quotile-0.2.0-debug
+          path: dist/Quotile-0.2.0.apk
           if-no-files-found: error
           retention-days: 14
       - name: Note signing limitation

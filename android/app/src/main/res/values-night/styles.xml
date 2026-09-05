@@ -7,4 +7,10 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">#121A19</item>
     </style>
+    <style name="RefreshTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#A9D9BD</item>
+        <item name="android:windowMinWidthMajor">85%</item>
+        <item name="android:windowMinWidthMinor">85%</item>
+    </style>
 </resources>

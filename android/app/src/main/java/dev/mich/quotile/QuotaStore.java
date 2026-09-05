@@ -2,116 +2,86 @@ package dev.mich.quotile;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
-import android.util.Base64;
 import org.json.JSONObject;
-import java.net.URI;
-import java.security.KeyStore;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
 
-/** Private configuration and last server snapshot. OpenAI credentials never enter this app. */
+/** Local display preferences and the last quota snapshot. */
 public final class QuotaStore {
     private static final Object LOCK = new Object();
-    private static final String KEY_ALIAS = "quotile.pairing.v1";
     private final SharedPreferences prefs;
+    private final Context app;
 
     public QuotaStore(Context context) {
-        prefs = context.getApplicationContext().getSharedPreferences("quotile", Context.MODE_PRIVATE);
+        app = context.getApplicationContext();
+        prefs = app.getSharedPreferences("quotile", Context.MODE_PRIVATE);
     }
-    public String endpoint() { return prefs.getString("endpoint", ""); }
     public String theme() { return prefs.getString("theme", "system"); }
-    public int intervalMinutes() { return prefs.getInt("interval", 30); }
     public boolean demo() { return prefs.getBoolean("demo", false); }
+    public boolean automatic() { return prefs.getBoolean("automatic", false); }
+    public int intervalMinutes() {
+        int value = prefs.getInt("interval", 30);
+        return value == 15 || value == 60 ? value : 30;
+    }
     public long generation() { return prefs.getLong("generation", 0); }
-    public String token() {
+
+    public void savePreferences(String theme, boolean demo) throws Exception {
+        savePreferences(theme, demo, automatic(), intervalMinutes());
+    }
+    public void savePreferences(String theme, boolean demo, boolean automatic, int interval) throws Exception {
         synchronized (LOCK) {
-            String ciphertext = prefs.getString("token", "");
-            if (ciphertext.isEmpty()) return "";
-            try {
-                byte[] iv = Base64.decode(prefs.getString("iv", ""), Base64.NO_WRAP);
-                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.DECRYPT_MODE, secretKey(), new GCMParameterSpec(128, iv));
-                return new String(cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP)), java.nio.charset.StandardCharsets.UTF_8);
-            } catch (Exception unavailable) { return ""; }
-        }
-    }
-    private static SecretKey secretKey() throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
-        keyStore.load(null);
-        if (keyStore.containsAlias(KEY_ALIAS)) return ((KeyStore.SecretKeyEntry) keyStore.getEntry(KEY_ALIAS, null)).getSecretKey();
-        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-        generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
-        return generator.generateKey();
-    }
-    public static String normalizeEndpoint(String input) {
-        if (input == null || input.trim().isEmpty()) throw new IllegalArgumentException("请填写 HTTPS 服务地址");
-        try {
-            URI uri = new URI(input.trim());
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
-                    || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null)
-                throw new IllegalArgumentException("使用 HTTPS 地址，地址中不要包含配对码、查询参数或账号");
-            String path = uri.getPath();
-            if (path == null || path.equals("/") || path.isEmpty()) path = "/v1/quota";
-            if (!path.equals("/v1/quota")) throw new IllegalArgumentException("服务地址路径应为 /v1/quota，或只填写域名");
-            if (uri.getPort() == 0 || uri.getPort() > 65535) throw new IllegalArgumentException("端口无效");
-            return new URI("https", null, uri.getHost(), uri.getPort(), path, null, null).toASCIIString();
-        } catch (java.net.URISyntaxException invalid) { throw new IllegalArgumentException("服务地址格式不正确"); }
-    }
-    public void configure(String endpoint, String token, String theme, int interval, boolean demo) throws Exception {
-        synchronized (LOCK) {
-            String cleanEndpoint = endpoint == null ? "" : endpoint.trim();
-            String cleanToken = token == null ? "" : token.trim();
-            if (!demo || !cleanEndpoint.isEmpty()) cleanEndpoint = normalizeEndpoint(cleanEndpoint);
-            if (!demo && !cleanToken.matches("[A-Za-z0-9_-]{32,256}")) throw new IllegalArgumentException("请填写桥接服务生成的完整配对码");
-            if (!cleanToken.isEmpty() && !cleanToken.matches("[A-Za-z0-9_-]{32,256}")) throw new IllegalArgumentException("配对码格式不正确");
-            if (!theme.equals("light") && !theme.equals("dark") && !theme.equals("system")) theme = "system";
+            if (!"light".equals(theme) && !"dark".equals(theme) && !"system".equals(theme)) theme = "system";
             if (interval != 15 && interval != 30 && interval != 60) interval = 30;
-            boolean changed = !cleanEndpoint.equals(endpoint()) || !cleanToken.equals(token());
-            SharedPreferences.Editor edit = prefs.edit().putString("endpoint", cleanEndpoint).putString("theme", theme)
-                    .putInt("interval", interval).putBoolean("demo", demo).putLong("generation", generation() + 1);
-            if (cleanToken.isEmpty()) edit.remove("token").remove("iv");
-            else {
-                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.ENCRYPT_MODE, secretKey());
-                edit.putString("token", Base64.encodeToString(cipher.doFinal(cleanToken.getBytes(java.nio.charset.StandardCharsets.UTF_8)), Base64.NO_WRAP));
-                edit.putString("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP));
-            }
-            if (changed) edit.remove("snapshot").remove("lastError");
-            if (!edit.commit()) throw new java.io.IOException("配置未能保存，请重试");
+            if (!prefs.edit().putString("theme", theme).putBoolean("demo", demo)
+                    .putBoolean("automatic", automatic).putInt("interval", interval)
+                    .putLong("generation", generation() + 1).commit())
+                throw new java.io.IOException("Settings could not be saved");
         }
     }
-    public void clear() {
+    public void setAutomatic(boolean automatic, int interval) throws Exception {
         synchronized (LOCK) {
-            long next = generation() + 1;
-            prefs.edit().clear().putLong("generation", next).commit();
+            if (interval != 15 && interval != 30 && interval != 60) interval = 30;
+            if (!prefs.edit().putBoolean("automatic", automatic).putInt("interval", interval)
+                    .putLong("generation", generation() + 1).commit())
+                throw new java.io.IOException("Automatic refresh preference could not be saved");
+        }
+    }
+    public void clearSnapshot() {
+        synchronized (LOCK) {
+            prefs.edit().remove("snapshot").remove("lastError")
+                    .putLong("generation", generation() + 1).commit();
+        }
+    }
+    /** Upgrade cleanup only: never starts a scheduled or network task. */
+    public void migrateManualMode() {
+        android.app.job.JobScheduler jobs = app.getSystemService(android.app.job.JobScheduler.class);
+        if (jobs != null) { jobs.cancel(61001); jobs.cancel(61002); }
+        synchronized (LOCK) {
+            if (!prefs.getBoolean("nativeManualV2", false)) {
+                prefs.edit().remove("endpoint").remove("token").remove("iv").remove("interval")
+                        .remove("snapshot").remove("lastError")
+                        .putLong("generation", generation() + 1).putBoolean("nativeManualV2", true).commit();
+            }
         }
     }
     public WidgetState state() {
         if (demo()) return demoState();
         WidgetState state = new WidgetState();
-        state.configured = !endpoint().isEmpty() && !token().isEmpty();
         try {
             String snapshot = prefs.getString("snapshot", "");
             if (!snapshot.isEmpty()) state = parse(new JSONObject(snapshot));
         } catch (Exception invalid) { state.error = "invalid_response"; }
-        state.configured = !endpoint().isEmpty() && !token().isEmpty();
+        state.configured = AccountClient.isSignedIn(app);
         String error = prefs.getString("lastError", "");
         if (!error.isEmpty()) { state.error = error; state.stale = true; }
         long now = System.currentTimeMillis() / 1000;
-        if (state.updatedAt > 0 && now - state.updatedAt > intervalMinutes() * 120L) state.stale = true;
         if ((state.weeklyResetAt > 0 && now >= state.weeklyResetAt)
                 || (state.fiveHourResetAt > 0 && now >= state.fiveHourResetAt)) state.stale = true;
         return state;
     }
     public void saveSnapshot(JSONObject json, long expectedGeneration) throws Exception {
-        parse(json); // Validate the complete response before replacing a previously good snapshot.
+        parse(json);
         synchronized (LOCK) {
-            if (generation() == expectedGeneration) prefs.edit().putString("snapshot", json.toString()).remove("lastError").commit();
+            if (generation() == expectedGeneration && !prefs.edit().putString("snapshot", json.toString())
+                    .remove("lastError").commit()) throw new java.io.IOException("Snapshot could not be saved");
         }
     }
     public void saveError(String error, long expectedGeneration) {
