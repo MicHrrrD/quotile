@@ -25,10 +25,14 @@ public final class ManualModeTests extends Instrumentation {
             store.migrateManualMode();
             AccountContractTests.run(app);
             require(!store.automatic(), "Automatic refresh must default OFF");
+            long manualGeneration = store.generation();
             store.setAutomatic(true, 15);
             Schedule.apply(app);
             require(app.getSystemService(JobScheduler.class).getAllPendingJobs().isEmpty(), "Signed-out auto mode must not schedule");
             store.setAutomatic(false, 30);
+            require(store.generation()==manualGeneration,"Auto switch must not discard a manual refresh result");
+            store.savePreferences("dark",false,false,60);
+            require(store.generation()==manualGeneration,"Theme and interval must not invalidate a manual read");
             android.app.job.JobInfo oldTask = new android.app.job.JobInfo.Builder(Schedule.OPTIONAL_ID,
                     new android.content.ComponentName(app,QuotaJobService.class)).setMinimumLatency(86400000).build();
             app.getSystemService(JobScheduler.class).schedule(oldTask);

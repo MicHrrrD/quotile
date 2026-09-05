@@ -32,15 +32,14 @@ public final class QuotaStore {
             if (interval != 15 && interval != 30 && interval != 60) interval = 30;
             if (!prefs.edit().putString("theme", theme).putBoolean("demo", demo)
                     .putBoolean("automatic", automatic).putInt("interval", interval)
-                    .putLong("generation", generation() + 1).commit())
+                    .putLong("generation", generation() + (demo != demo() ? 1 : 0)).commit())
                 throw new java.io.IOException("Settings could not be saved");
         }
     }
     public void setAutomatic(boolean automatic, int interval) throws Exception {
         synchronized (LOCK) {
             if (interval != 15 && interval != 30 && interval != 60) interval = 30;
-            if (!prefs.edit().putBoolean("automatic", automatic).putInt("interval", interval)
-                    .putLong("generation", generation() + 1).commit())
+            if (!prefs.edit().putBoolean("automatic", automatic).putInt("interval", interval).commit())
                 throw new java.io.IOException("Automatic refresh preference could not be saved");
         }
     }
