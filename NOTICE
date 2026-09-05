@@ -1,0 +1,15 @@
+Quotile / 余量
+Copyright 2026 MicHrrrD and Quotile contributors
+
+Quotile is an independent Android application. Its phone-local authentication
+and quota parsing were adapted for Android with reference to the public
+OpenAI Codex implementation (rust-v0.153.4):
+OpenAI Codex
+Copyright 2025 OpenAI
+Licensed under the Apache License, Version 2.0.
+
+The small service-source mark uses the OpenAI icon path from Simple Icons
+9.20.0, distributed under CC0 1.0. Brand and trademark rights remain with
+their respective owners. No OpenAI or Samsung endorsement is implied.
+
+See THIRD_PARTY_NOTICES.md and licenses/ for sources and license texts.

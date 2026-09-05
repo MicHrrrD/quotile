@@ -14,3 +14,17 @@ bridge-config.json
 *.jks
 *.pem
 .env
+*.p12
+*.pfx
+*.key
+keystore-password.txt
+*-password.txt
+.env.*
+quotile-signing-private/
+*-signing-private.zip
+
+# Local device authorization and captured account responses
+auth.json
+account-v1.bin
+token-vault*
+quota-response*.json

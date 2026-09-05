@@ -1,0 +1,37 @@
+name: 问题反馈
+description: 报告登录、额度读取或小组件显示问题
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: 请勿提交令牌、Cookie、设备验证码、完整授权链接或原始账号响应。截图请遮住邮箱及个人桌面内容。
+  - type: input
+    id: version
+    attributes:
+      label: Quotile 版本
+      placeholder: 例如 0.3.4，来自仓库 downloads
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 手机、Android 与启动器版本
+      placeholder: 例如 Galaxy Z Fold7 / Android 16 / One UI
+    validations:
+      required: true
+  - type: input
+    id: size
+    attributes:
+      label: 小组件尺寸与字体缩放
+      placeholder: 例如高×宽 2×5，系统默认字号；非显示问题可留空
+  - type: textarea
+    id: problem
+    attributes:
+      label: 重现步骤与实际结果
+      description: 描述操作顺序、界面上的错误提示，以及是否开启自动刷新。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果与脱敏截图
