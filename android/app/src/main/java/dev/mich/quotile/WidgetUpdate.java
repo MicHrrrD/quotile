@@ -79,6 +79,8 @@ public final class WidgetUpdate {
         String status = QuotaSync.isRunning() ? "正在刷新。" : s.demo ? "演示数据。" : (s.stale ? "旧数据，待手动刷新。" : "上次读取的额度。");
         return "Codex 额度。" + status + "每周剩余" + amount(s.weeklyRemaining) + "，五小时剩余" + amount(s.fiveHourRemaining)
                 + (showResets ? "。可用重置" + (s.availableResetCount == null ? "次数未提供" : s.availableResetCount + "次") : "")
+                + (showResets && s.availableResetCount != null && s.availableResetCount > 0
+                        ? "。" + WidgetRenderer.resetExpiry(s, System.currentTimeMillis() / 1000L) + "，北京时间" : "")
                 + "。点按打开设置，右侧按钮刷新。";
     }
     private static String amount(Double percent) {

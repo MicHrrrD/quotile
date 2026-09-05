@@ -43,6 +43,13 @@ public final class WidgetRenderer {
                 dark ? R.drawable.widget_background_dark : R.drawable.widget_background);
         views.setImageViewResource(R.id.widget_source_icon,
                 dark ? R.drawable.ic_openai_source_dark : R.drawable.ic_openai_source);
+        // Launchers can reapply onto the existing hierarchy. Explicitly clear conditional
+        // rows so a zero count or a resize cannot leave an earlier expiry on screen.
+        for (int id : new int[]{R.id.widget_source_icon, R.id.widget_label, R.id.widget_value,
+                R.id.widget_reset, R.id.widget_reset_count, R.id.widget_reset_expiry,
+                R.id.widget_secondary_label, R.id.widget_secondary_value, R.id.widget_secondary_reset,
+                R.id.widget_status, R.id.widget_progress, R.id.widget_secondary_progress})
+            views.setViewVisibility(id, View.GONE);
         if (!state.configured) unconfigured();
         else if (height < 110) compact();
         else if (width >= 250 && state.fiveHourRemaining != null) detail();
@@ -117,8 +124,8 @@ public final class WidgetRenderer {
     private void weeklyDetail() {
         float pad = width < 180 ? 14 : 18;
         float contentWidth = width - pad * 2;
-        boolean small = height < 134;
-        float top = height > 200 ? 22 : small ? 10 : 16;
+        boolean small = smallDetail();
+        float top = detailTop(small);
         if (width >= 220) sourceLabel("Codex 额度 · 每周剩余", pad, top, width - pad - 54, 18);
         else label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 18, secondary);
         DetailMetrics layout = detailMetrics(top, small);
@@ -127,7 +134,7 @@ public final class WidgetRenderer {
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop,
                 width < 180 ? contentWidth : contentWidth * .65f, valueHeight, false);
         float barY = valueTop + valueHeight + layout.barGap;
-        float barHeight = small ? 9 : 11;
+        float barHeight = layout.barHeight;
         bar(R.id.widget_progress, pad, barY, contentWidth, barHeight, state.weeklyRemaining);
         float resetY = barY + barHeight + layout.resetGap;
         label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, contentWidth, 16, secondary);
@@ -139,8 +146,8 @@ public final class WidgetRenderer {
         float gap = width < 320 ? 20 : 28;
         float column = (width - pad * 2 - gap) / 2f;
         float secondX = pad + column + gap;
-        boolean small = height < 134;
-        float top = height > 200 ? 22 : small ? 10 : 16;
+        boolean small = smallDetail();
+        float top = detailTop(small);
         DetailMetrics layout = detailMetrics(top, small);
         float valueTop = layout.valueTop;
         float valueHeight = layout.valueHeight;
@@ -149,7 +156,7 @@ public final class WidgetRenderer {
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop, column, valueHeight, false);
         amount(R.id.widget_secondary_value, state.fiveHourRemaining, secondX, valueTop, column, valueHeight, false);
         float barY = valueTop + valueHeight + layout.barGap;
-        float barHeight = small ? 9 : 11;
+        float barHeight = layout.barHeight;
         bar(R.id.widget_progress, pad, barY, column, barHeight, state.weeklyRemaining);
         bar(R.id.widget_secondary_progress, secondX, barY, column, barHeight, state.fiveHourRemaining);
         float resetY = barY + barHeight + layout.resetGap;
@@ -160,18 +167,38 @@ public final class WidgetRenderer {
     }
 
     private static final class DetailMetrics {
-        float valueTop, valueHeight, barGap, resetGap;
+        float valueTop, valueHeight, barGap, barHeight, resetGap;
+    }
+
+    private boolean showResetExpiry() {
+        return state.availableResetCount != null && state.availableResetCount > 0;
+    }
+
+    private boolean separateDetailStatus() {
+        return height >= (showResetExpiry() ? 196 : 160);
+    }
+
+    private boolean smallDetail() {
+        return height < 134 || (showResetExpiry() && height < 160);
+    }
+
+    private float detailTop(boolean small) {
+        return height > 200 ? 22 : showResetExpiry() && height < 134 ? 4 : small ? 10 : 16;
     }
 
     private DetailMetrics detailMetrics(float top, boolean small) {
         DetailMetrics layout = new DetailMetrics();
         layout.valueTop = top + (small ? 18 : 22);
-        layout.barGap = small ? 4 : 10;
-        layout.resetGap = small ? 6 : 9;
-        float barHeight = small ? 9 : 11;
-        // Reserve two complete 16dp footer lines, plus the update line on taller cards.
-        float resetLimit = height - (height >= 160 ? 61 : 42);
-        float afterValue = layout.barGap + barHeight + layout.resetGap;
+        boolean tight = showResetExpiry() && height < 134;
+        layout.barGap = tight ? 2 : small ? 4 : 10;
+        layout.resetGap = tight ? 2 : small ? 6 : 9;
+        layout.barHeight = tight ? 7 : small ? 9 : 11;
+        // Every footer retains a complete 16dp line. On typical two-row cards the
+        // expiry uses the former update row, keeping the main content almost unchanged.
+        float reserved = separateDetailStatus() ? (showResetExpiry() ? 79 : 61)
+                : (showResetExpiry() ? 59 : 42);
+        float resetLimit = height - reserved;
+        float afterValue = layout.barGap + layout.barHeight + layout.resetGap;
         layout.valueHeight = Math.min(small ? 32 : Math.min(63, 36 + (height - 134) * .25f),
                 resetLimit - layout.valueTop - afterValue);
         if (height >= 142) {
@@ -184,15 +211,29 @@ public final class WidgetRenderer {
     private void detailFooter(float pad, float resetY, float contentWidth) {
         String count = state.availableResetCount == null ? "可用重置 —"
                 : "可用重置 " + state.availableResetCount + " 次";
-        if (height < 160) {
-            // Short two-row cards prioritize both reset rows; retain refresh/stale indicators.
+        if (!separateDetailStatus()) {
+            // Keep status feedback when the expiry occupies the separate update line.
             if (refreshing) count += " · 刷新中";
             else if (state.demo) count += " · 演示";
             else if (old()) count += " · 旧数据";
+            else if (height >= 160 && width >= 270 && state.updatedAt > 0)
+                count += " · " + date(state.updatedAt, "HH:mm") + " 更新";
         }
         label(R.id.widget_reset_count, count, pad, resetY + 18, contentWidth, 16, secondary);
-        if (height >= 160)
+        if (showResetExpiry())
+            label(R.id.widget_reset_expiry, resetExpiry(state, now), pad, resetY + 36,
+                    contentWidth, 16, muted);
+        if (separateDetailStatus())
             label(R.id.widget_status, status(), pad, height - 25, contentWidth, 16, muted);
+    }
+
+    /** Shared with the widget's accessibility description; all dates use Beijing time. */
+    static String resetExpiry(WidgetState snapshot, long now) {
+        if (snapshot.nextResetCreditExpiresAt == null) return "到期时间未提供";
+        if (snapshot.nextResetCreditExpiresAt <= now) return "到期信息待刷新";
+        SimpleDateFormat format = new SimpleDateFormat("M/d HH:mm", Locale.CHINA);
+        format.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+        return "最近到期 " + format.format(new Date(snapshot.nextResetCreditExpiresAt * 1000L));
     }
 
     private void unconfigured() {

@@ -74,6 +74,10 @@ public final class QuotaStore {
         long now = System.currentTimeMillis() / 1000;
         if ((state.weeklyResetAt > 0 && now >= state.weeklyResetAt)
                 || (state.fiveHourResetAt > 0 && now >= state.fiveHourResetAt)) state.stale = true;
+        if (state.nextResetCreditExpiresAt != null && now >= state.nextResetCreditExpiresAt) {
+            state.nextResetCreditExpiresAt = null;
+            state.stale = true;
+        }
         return state;
     }
     public void saveSnapshot(JSONObject json, long expectedGeneration) throws Exception {
@@ -84,6 +88,10 @@ public final class QuotaStore {
             // floating-point count cannot become a seemingly valid integer after reloading.
             stored.put("availableResetCount", validated.availableResetCount == null
                     ? JSONObject.NULL : validated.availableResetCount);
+        }
+        if (json.has("nextResetCreditExpiresAt")) {
+            stored.put("nextResetCreditExpiresAt", validated.nextResetCreditExpiresAt == null
+                    ? JSONObject.NULL : validated.nextResetCreditExpiresAt);
         }
         synchronized (LOCK) {
             if (generation() == expectedGeneration && !prefs.edit().putString("snapshot", stored.toString())
@@ -107,6 +115,9 @@ public final class QuotaStore {
         state.error = json.isNull("error") ? null : json.optString("error", null);
         // Additive schemaVersion 1 field: older snapshots and malformed optional data stay usable.
         state.availableResetCount = RateLimitParser.optionalNonNegativeInteger(json.opt("availableResetCount"));
+        Long expiry = RateLimitParser.optionalNonNegativeInteger(json.opt("nextResetCreditExpiresAt"));
+        if (state.availableResetCount != null && state.availableResetCount > 0 && expiry != null
+                && expiry > state.updatedAt && expiry <= 4102444800L) state.nextResetCreditExpiresAt = expiry;
         if (!json.has("weekly") || !json.has("fiveHour")) throw new IllegalArgumentException("missing windows");
         JSONObject weekly = json.isNull("weekly") ? null : json.getJSONObject("weekly");
         JSONObject fiveHour = json.isNull("fiveHour") ? null : json.getJSONObject("fiveHour");
@@ -132,6 +143,7 @@ public final class QuotaStore {
         state.weeklyRemaining = 68.0; state.fiveHourRemaining = 84.0;
         state.availableResetCount = 2L;
         long now = System.currentTimeMillis()/1000;
+        state.nextResetCreditExpiresAt = now + 7 * 86400 + 7200;
         state.weeklyResetAt = now + 3 * 86400 + 7200; state.fiveHourResetAt = now + 9000;
         state.updatedAt = now; state.demo = true; state.configured = true; state.plan = "Pro 5x";
         return state;

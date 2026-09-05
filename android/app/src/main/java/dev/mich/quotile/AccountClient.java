@@ -41,6 +41,7 @@ public final class AccountClient {
     private static final String AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
     private static final String TOKEN_URL = "https://auth.openai.com/oauth/token";
     private static final String QUOTA_URL = "https://chatgpt.com/backend-api/wham/usage";
+    private static final String RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
     private static final String AUTH_CLAIM = "https://api.openai.com/auth";
     private static final String PROFILE_CLAIM = "https://api.openai.com/profile";
     private static final Object READ_LOCK = new Object();
@@ -568,6 +569,16 @@ public final class AccountClient {
      * It must be fast, local, and free of locks which could wait on this client's vault lock.
      */
     public static JSONObject readQuota(Context context, java.util.function.BooleanSupplier allowed) throws AccountException {
+        return readQuota(context, allowed, null);
+    }
+
+    // Tests can return synthetic reads, but cannot alter the production endpoint allowlist.
+    enum QuotaEndpoint { USAGE, RESET_CREDITS }
+    interface QuotaReadTransport {
+        JSONObject get(QuotaEndpoint endpoint, long requestDeadline) throws AccountException;
+    }
+    static JSONObject readQuota(Context context, java.util.function.BooleanSupplier allowed,
+            QuotaReadTransport transport) throws AccountException {
         if (allowed == null) throw new IllegalArgumentException("allowed");
         if (!allowed.getAsBoolean()) throw new AccountException("read_cancelled");
         synchronized (READ_LOCK) {
@@ -593,7 +604,7 @@ public final class AccountClient {
                     credentials = refresh(vault, credentials, operation); refreshed = true;
                 }
                 JSONObject payload;
-                try { payload = request(QUOTA_URL, "GET", null, null, credentials, deadline, null, operation, false); }
+                try { payload = quotaRequest(QuotaEndpoint.USAGE, credentials, deadline, operation, transport); }
                 catch (AccountException rejected) {
                     operation.check();
                     if (!rejected.getCode().equals("unauthorized") || refreshed) {
@@ -601,7 +612,7 @@ public final class AccountClient {
                         throw rejected;
                     }
                     credentials = refresh(vault, credentials, operation);
-                    try { payload = request(QUOTA_URL, "GET", null, null, credentials, deadline, null, operation, false); }
+                    try { payload = quotaRequest(QuotaEndpoint.USAGE, credentials, deadline, operation, transport); }
                     catch (AccountException failure) {
                         operation.check();
                         if (failure.getCode().equals("unauthorized")) throw new AccountException("login_required");
@@ -609,11 +620,44 @@ public final class AccountClient {
                     }
                 }
                 operation.check();
-                try { return RateLimitParser.parse(payload, System.currentTimeMillis() / 1000); }
+                JSONObject snapshot;
+                long now = System.currentTimeMillis() / 1000;
+                try { snapshot = RateLimitParser.parse(payload, now); }
                 catch (AccountException unavailable) { throw unavailable; }
                 catch (Exception invalid) { throw new AccountException("invalid_response"); }
+                Long count = RateLimitParser.optionalNonNegativeInteger(snapshot.opt("availableResetCount"));
+                // Supplemental data never spends credits, triggers a retry, or extends the read.
+                // Reserve a second of the overall budget to return the successful usage snapshot.
+                long detailDeadline = Math.min(deadline - 1000, SystemClock.elapsedRealtime() + 4000);
+                if (count != null && count > 0 && detailDeadline - SystemClock.elapsedRealtime() >= 500) {
+                    try {
+                        JSONObject details = quotaRequest(QuotaEndpoint.RESET_CREDITS, credentials,
+                                detailDeadline, operation, transport);
+                        Long expiry = RateLimitParser.nextResetCreditExpiry(details, count, now);
+                        snapshot.put("nextResetCreditExpiresAt", expiry == null ? JSONObject.NULL : expiry);
+                    } catch (Exception optionalUnavailable) {
+                        // Cancellation, logout and the overall deadline must still abort the read.
+                        operation.check();
+                    }
+                }
+                operation.check();
+                return snapshot;
             }
         }
+    }
+
+    private static JSONObject quotaRequest(QuotaEndpoint endpoint, TokenVault.Credentials credentials,
+            long deadline, ReadSession operation, QuotaReadTransport transport) throws AccountException {
+        operation.check();
+        remaining(deadline);
+        JSONObject response = transport == null
+                ? request(endpoint == QuotaEndpoint.USAGE ? QUOTA_URL : RESET_CREDITS_URL,
+                        "GET", null, null, credentials, deadline, null, operation, false)
+                : transport.get(endpoint, deadline);
+        operation.check();
+        remaining(deadline);
+        if (response == null) throw new AccountException("invalid_response");
+        return response;
     }
 
     private static TokenVault.Credentials refresh(TokenVault vault, TokenVault.Credentials old, ReadSession operation)
@@ -710,7 +754,10 @@ public final class AccountClient {
         DeadlineWatch requestWatch = null;
         try {
             if (device == null) {
-                if (!TOKEN_URL.equals(endpoint) && !QUOTA_URL.equals(endpoint)) throw new AccountException("invalid_endpoint");
+                if (!TOKEN_URL.equals(endpoint) && !QUOTA_URL.equals(endpoint) && !RESET_CREDITS_URL.equals(endpoint))
+                    throw new AccountException("invalid_endpoint");
+                if ((QUOTA_URL.equals(endpoint) || RESET_CREDITS_URL.equals(endpoint)) && !"GET".equals(method))
+                    throw new AccountException("invalid_endpoint");
             } else if (deviceEndpoint == null || !deviceEndpoint.url.equals(endpoint) || !"POST".equals(method)) {
                 throw new AccountException("invalid_endpoint");
             }
@@ -727,9 +774,9 @@ public final class AccountClient {
                 synchronized (TokenVault.LOCK) { device.check(); device.currentConnection = connection; }
             }
             if (operation != null) operation.register(connection);
-            // Login has a three-minute browser window but token exchange gets its own 25-second
-            // disconnect watchdog. Read operations already own a watchdog spanning all requests.
-            if (login != null || device != null) {
+            // Login exchange and optional quota details have a smaller request budget than the
+            // enclosing operation. Disconnect these requests without cancelling the whole read.
+            if (login != null || device != null || (operation != null && deadline < operation.deadline)) {
                 HttpsURLConnection tokenConnection = connection;
                 requestWatch = new DeadlineWatch(deadline, tokenConnection::disconnect);
             }

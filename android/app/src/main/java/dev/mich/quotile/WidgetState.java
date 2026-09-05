@@ -6,6 +6,8 @@ public final class WidgetState {
     public Double fiveHourRemaining;
     /** Server-reported usable Codex reset credits; null means unavailable, not zero. */
     public Long availableResetCount;
+    /** Nearest expiry among the complete set of available Codex reset credits; null if unknown. */
+    public Long nextResetCreditExpiresAt;
     public long weeklyResetAt;
     public long fiveHourResetAt;
     public long updatedAt;

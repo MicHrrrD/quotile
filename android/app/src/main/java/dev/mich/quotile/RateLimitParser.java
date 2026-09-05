@@ -1,6 +1,10 @@
 package dev.mich.quotile;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
+import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Reads only the primary Codex quota bucket. It does not infer another ChatGPT product's quota.
@@ -52,7 +56,53 @@ public final class RateLimitParser {
                 .put("weekly", weekly == null ? JSONObject.NULL : weekly)
                 .put("fiveHour", fiveHour == null ? JSONObject.NULL : fiveHour)
                 .put("availableResetCount", availableResetCount == null ? JSONObject.NULL : availableResetCount)
+                .put("nextResetCreditExpiresAt", JSONObject.NULL)
                 .put("updatedAt", now).put("stale", false).put("error", JSONObject.NULL);
+    }
+
+    /**
+     * Reset-credit detail lists can be truncated. Only a complete, unique set matching the
+     * authoritative usage count can establish the nearest expiry; never infer a count here.
+     * Source: backend-client/src/types.rs RateLimitResetCreditsDetails / RateLimitResetCreditDetails.
+     */
+    static Long nextResetCreditExpiry(JSONObject payload, Long expectedCount, long now) {
+        if (payload == null || expectedCount == null || expectedCount <= 0) return null;
+        Long count = optionalNonNegativeInteger(payload.opt("available_count"));
+        JSONArray credits = payload.optJSONArray("credits");
+        if (!expectedCount.equals(count) || credits == null || count > credits.length()) return null;
+        Set<String> ids = new HashSet<>();
+        long available = 0;
+        Long nearest = null;
+        for (int index = 0; index < credits.length(); index++) {
+            JSONObject credit = credits.optJSONObject(index);
+            if (credit == null) return null;
+            String id = detailString(credit.opt("id"), 4096);
+            String status = detailString(credit.opt("status"), 128);
+            String type = detailString(credit.opt("reset_type"), 128);
+            if (id == null || status == null || type == null || !ids.add(id)) return null;
+            if (!"available".equals(status) || !"codex_rate_limits".equals(type)) continue;
+            // Absence is not evidence of an unlimited lifetime; explicit null is accepted.
+            if (!credit.has("expires_at")) return null;
+            Object rawExpiry = credit.opt("expires_at");
+            if (rawExpiry == JSONObject.NULL) { available++; continue; }
+            if (!(rawExpiry instanceof String) || ((String) rawExpiry).length() > 80) return null;
+            long expires;
+            try { expires = OffsetDateTime.parse((String) rawExpiry).toEpochSecond(); }
+            catch (RuntimeException invalid) { return null; }
+            if (expires < 0 || expires > 4102444800L) return null;
+            if (expires <= now) continue;
+            available++;
+            if (nearest == null || expires < nearest) nearest = expires;
+        }
+        return available == count ? nearest : null;
+    }
+
+    private static String detailString(Object raw, int maximum) {
+        if (!(raw instanceof String)) return null;
+        String text = (String) raw;
+        if (text.isEmpty() || text.length() > maximum) return null;
+        for (int i = 0; i < text.length(); i++) if (Character.isISOControl(text.charAt(i))) return null;
+        return text;
     }
 
     /** Optional counts must not coerce strings, floating point values, or overflowing numbers. */
