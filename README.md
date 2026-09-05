@@ -40,7 +40,7 @@
 
 目前读取的是 **Codex 额度桶**。不能未经实际账户核对，将它等同于所有 ChatGPT 对话、模型和工具的 Pro 周限额。应用明确显示来源；官方没返回的项保持未知，`pro` 不会被擅自补成 `Pro 5x`。
 
-本地客户端依据 [OpenAI Codex rust-v0.153.4](https://github.com/openai/codex/tree/rust-v0.153.4) 的公开原生 OAuth 客户端流程与额度读取代码，实现 PKCE/state、短时回环回调、Android 系统 HTTPS，以及 Android Keystore AES-GCM 凭据存储。它使用独立的应用标识和较少的授权范围。第三方 Android 登录、较少授权范围和后端端点的实际兼容性，需要本人登录验证；上游变化可能需要更新应用。
+本地客户端依据 [OpenAI Codex rust-v0.153.4](https://github.com/openai/codex/tree/rust-v0.153.4) 的公开原生 OAuth 客户端流程与额度读取代码，实现 PKCE/state、短时回环回调、Android 系统 HTTPS，以及 Android Keystore AES-GCM 凭据存储。浏览器登录沿用独立的应用标识和较少的授权范围；设备码方式遵循上游设备授权流程，不另行指定浏览器授权范围。第三方 Android 登录和后端端点的实际兼容性，需要本人登录验证；上游变化可能需要更新应用。
 
 浏览器登录从发起时起最多等待 3 分钟。应用会显示当前等待阶段；超时后需重新发起，旧授权页面不能继续完成已经结束的会话。官方授权页一直转圈并不能单独证明是本机回调、网络或上游服务中的哪一环故障。
 
@@ -64,7 +64,7 @@ python tools/verify_source.py
 python tools/build_android.py
 ```
 
-工作流验证 APK 签名，并在 Android16 上检查默认关闭、取消任务、桌面广播不启动 Activity、额度解析及加密存储。24 种卡片在原生 Android 控件上渲染，截图随构建产物提供。0.3.1 的构建与登录流程验证待 CI 完成；[0.3.0 历史构建已通过](https://github.com/MicHrrrD/quotile/actions/runs/33959427790)。签名与安装包校验值见 `VALIDATION.md`。云端测试使用合成数据，不代表已通过真实账号授权。
+工作流验证 APK 签名，并在 Android16 上检查默认关闭、取消任务、桌面广播不启动 Activity、额度解析及加密存储。24 种卡片在原生 Android 控件上渲染，截图随构建产物提供。[0.3.1 构建与 Android16 登录合约测试已通过](https://github.com/MicHrrrD/quotile/actions/runs/33961464322)。签名与安装包校验值见 `VALIDATION.md`。云端测试使用合成数据，不代表已通过真实账号授权。
 
 Actions 产物包含测试用调试 APK 和 Android 官方签名工具；最终交付使用 `tools/sign_apk.py` 在本地重签，验证证书与全部应用内容未变。签名私钥和口令不进入源码仓库。
 
