@@ -131,6 +131,21 @@ public final class ManualModeTests extends Instrumentation {
                 result[0]=WidgetRenderer.render(app,width,height,state,dark);
                 int expected=Math.round(width*app.getResources().getDisplayMetrics().density);
                 require(Math.abs(result[0].getWidth()-expected)<=1,"Preview must use device pixel density");
+                if(width==350 && height==64 && !dark) {
+                    // The numeric top-right region must contain ink. This caught native
+                    // singleLine scrolling placing right-aligned text outside its box.
+                    float density=app.getResources().getDisplayMetrics().density;
+                    int ink=0;
+                    for(int y=Math.round(2*density);y<Math.round(32*density);y++)
+                        for(int x=Math.round(175*density);x<Math.round(295*density);x++) {
+                            int color=result[0].getPixel(x,y);
+                            if(android.graphics.Color.alpha(color)>200
+                                    && android.graphics.Color.red(color)<70
+                                    && android.graphics.Color.green(color)<70
+                                    && android.graphics.Color.blue(color)<70) ink++;
+                        }
+                    require(ink>=15,"Compact right-aligned percentage must be visibly rendered");
+                }
             } catch(Throwable error) { failure[0]=error; }
         });
         if(failure[0]!=null) throw new AssertionError("Native widget inflation/render failed",failure[0]);
