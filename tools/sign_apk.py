@@ -110,13 +110,19 @@ def main() -> int:
             with password.open("xb") as sink:
                 os.chmod(password, 0o600)
                 sink.write(secret + b"\n")
+            # apksigner caches readers by filename and consumes one line per
+            # password request. Separate files avoid an EOF on the key password.
+            key_password = directory / "key-password.txt"
+            with key_password.open("xb") as sink:
+                os.chmod(key_password, 0o600)
+                sink.write(secret + b"\n")
             certificate = run([keytool, "-exportcert", "-keystore", str(args.keystore.resolve()),
                                "-alias", args.alias, "-storepass:file", str(password)], "Certificate export")
             expected = hashlib.sha256(certificate).hexdigest()
             signed = directory / "signed.apk"
             signer = [java, "-jar", str(args.apksigner.resolve())]
             run([*signer, "sign", "--ks", str(args.keystore.resolve()), "--ks-key-alias", args.alias,
-                 "--ks-pass", "file:" + str(password), "--key-pass", "file:" + str(password),
+                 "--ks-pass", "file:" + str(password), "--key-pass", "file:" + str(key_password),
                  "--v1-signing-enabled", "false", "--v2-signing-enabled", "true",
                  "--v3-signing-enabled", "true", "--v4-signing-enabled", "false",
                  "--out", str(signed), str(source)], "APK signing")
@@ -124,7 +130,14 @@ def main() -> int:
             match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", report)
             if not match or match[1].lower() != expected:
                 raise RuntimeError("Signed APK certificate does not match the retained keystore.")
-            if "Verified using v2 scheme (APK Signature Scheme v2): true" not in report:
+            if "Verified using v3 scheme (APK Signature Scheme v3): true" not in report:
+                raise RuntimeError("APK v3 signature verification did not pass.")
+            # On minSdk 31, the normal verifier selects v3. Check v2 separately
+            # with verifier API bounds instead of mistaking an unselected v2 for failure.
+            v2_report = run([*signer, "verify", "--verbose", "--min-sdk-version", "24",
+                             "--max-sdk-version", "27", str(signed)],
+                            "APK v2 signature verification").decode("utf-8")
+            if "Verified using v2 scheme (APK Signature Scheme v2): true" not in v2_report:
                 raise RuntimeError("APK v2 signature verification did not pass.")
             if before != payload(signed):
                 raise RuntimeError("Signing changed the app payload; no APK was delivered.")
