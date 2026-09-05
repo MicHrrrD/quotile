@@ -41,6 +41,8 @@ public final class WidgetRenderer {
         views = new RemoteViews(context.getPackageName(), R.layout.widget);
         views.setInt(R.id.widget_root, "setBackgroundResource",
                 dark ? R.drawable.widget_background_dark : R.drawable.widget_background);
+        views.setImageViewResource(R.id.widget_source_icon,
+                dark ? R.drawable.ic_openai_source_dark : R.drawable.ic_openai_source);
         if (!state.configured) unconfigured();
         else if (height < 110) compact();
         else if (width >= 250 && state.fiveHourRemaining != null) detail();
@@ -84,12 +86,19 @@ public final class WidgetRenderer {
         float pad = width < 180 ? 11 : 15;
         float contentWidth = width - pad - 58;
         boolean tiny = height < 64;
-        float top = tiny ? Math.max(3, (height - 36) / 2f) : (height - 56) / 2f;
+        float top = tiny ? Math.max(3, (height - 36) / 2f) : (height - 58) / 2f;
         float headingHeight = tiny ? 21 : 26;
         float valueWidth = Math.min(width < 180 ? 51 : 88, contentWidth * .55f);
         if (width >= 160) {
-            label(R.id.widget_label, width < 220 ? "周余量" : "每周剩余", pad, top + (tiny ? 2 : 4),
-                    contentWidth - valueWidth - 3, headingHeight - (tiny ? 2 : 4), secondary);
+            float labelWidth = contentWidth - valueWidth - 3;
+            if (width >= 220) {
+                String title = width >= 300 ? "Codex 额度 · 每周剩余" : width >= 240 ? "Codex 额度" : "Codex";
+                sourceLabel(title, pad, top + (tiny ? 2 : 4), labelWidth,
+                        headingHeight - (tiny ? 2 : 4));
+            } else {
+                label(R.id.widget_label, "周余量", pad, top + (tiny ? 2 : 4),
+                        labelWidth, headingHeight - (tiny ? 2 : 4), secondary);
+            }
             amount(R.id.widget_value, state.weeklyRemaining, pad + contentWidth - valueWidth,
                     top, valueWidth, headingHeight, true);
         } else {
@@ -99,7 +108,9 @@ public final class WidgetRenderer {
         bar(R.id.widget_progress, pad, barY, contentWidth, tiny ? 6 : 9, state.weeklyRemaining);
         if (!tiny) {
             String footer = width >= 270 ? compactFooter() : shortStatus();
-            label(R.id.widget_status, footer, pad, barY + 15, contentWidth, 11, muted);
+            // A complete CJK line needs its full ascent/descent, including font fallback.
+            // Keep the capsule in place and use the space immediately below it for a 16dp line.
+            label(R.id.widget_status, footer, pad, barY + 12, contentWidth, 16, muted);
         }
     }
 
@@ -108,7 +119,8 @@ public final class WidgetRenderer {
         float contentWidth = width - pad * 2;
         boolean small = height < 134;
         float top = height > 200 ? 22 : small ? 10 : 16;
-        label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 16, secondary);
+        if (width >= 220) sourceLabel("Codex 额度 · 每周剩余", pad, top, width - pad - 54, 18);
+        else label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 18, secondary);
         float valueTop = top + (small ? 18 : 22);
         float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop,
@@ -117,12 +129,12 @@ public final class WidgetRenderer {
         float barHeight = small ? 9 : 11;
         bar(R.id.widget_progress, pad, barY, contentWidth, barHeight, state.weeklyRemaining);
         float resetY = barY + barHeight + 9;
-        label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, contentWidth, 14, secondary);
+        label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, contentWidth, 16, secondary);
         if (height >= 142) {
-            label(R.id.widget_status, status(), pad, Math.max(resetY + 20, height - 25), contentWidth, 13, muted);
+            label(R.id.widget_status, status(), pad, Math.min(height - 20, Math.max(resetY + 18, height - 25)), contentWidth, 16, muted);
         } else if (refreshing || old() || state.demo) {
             // Keep read state visible even when the short card has room for only one footer.
-            label(R.id.widget_reset, status(), pad, resetY, contentWidth, 14, secondary);
+            label(R.id.widget_reset, status(), pad, resetY, contentWidth, 16, secondary);
         }
     }
 
@@ -135,8 +147,8 @@ public final class WidgetRenderer {
         float top = height > 200 ? 22 : small ? 10 : 16;
         float valueTop = top + (small ? 18 : 22);
         float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
-        label(R.id.widget_label, "每周剩余", pad, top, column, 16, secondary);
-        label(R.id.widget_secondary_label, "5 小时剩余", secondX, top, width - secondX - 49, 16, secondary);
+        sourceLabel("Codex 额度 · 每周", pad, top, column, 18);
+        label(R.id.widget_secondary_label, "5 小时剩余", secondX, top, width - secondX - 49, 18, secondary);
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop, column, valueHeight, false);
         amount(R.id.widget_secondary_value, state.fiveHourRemaining, secondX, valueTop, column, valueHeight, false);
         float barY = valueTop + valueHeight + (small ? 8 : 10);
@@ -144,12 +156,12 @@ public final class WidgetRenderer {
         bar(R.id.widget_progress, pad, barY, column, barHeight, state.weeklyRemaining);
         bar(R.id.widget_secondary_progress, secondX, barY, column, barHeight, state.fiveHourRemaining);
         float resetY = barY + barHeight + 9;
-        label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, column, 14, secondary);
-        label(R.id.widget_secondary_reset, reset(state.fiveHourResetAt), secondX, resetY, column, 14, secondary);
+        label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, column, 16, secondary);
+        label(R.id.widget_secondary_reset, reset(state.fiveHourResetAt), secondX, resetY, column, 16, secondary);
         if (height >= 142) {
-            label(R.id.widget_status, status(), pad, Math.max(resetY + 20, height - 25), width - pad * 2, 13, muted);
+            label(R.id.widget_status, status(), pad, Math.min(height - 20, Math.max(resetY + 18, height - 25)), width - pad * 2, 16, muted);
         } else if (refreshing || old() || state.demo) {
-            label(R.id.widget_reset, status(), pad, resetY, column, 14, secondary);
+            label(R.id.widget_reset, status(), pad, resetY, column, 16, secondary);
         }
     }
 
@@ -159,6 +171,12 @@ public final class WidgetRenderer {
         float center = height / 2f;
         label(R.id.widget_label, "余量 · 待登录", pad, center - (height < 58 ? 10 : 20), available, 20, ink);
         if (height >= 58) label(R.id.widget_status, "点按卡片登录 ChatGPT", pad, center + 5, available, 15, secondary);
+    }
+
+    private void sourceLabel(String text, float x, float y, float available, float lineHeight) {
+        float icon = 16;
+        box(R.id.widget_source_icon, x, y + (lineHeight - icon) / 2f, icon, icon);
+        label(R.id.widget_label, text, x + icon + 6, y, available - icon - 6, lineHeight, secondary);
     }
 
     private void box(int id, float x, float y, float width, float height) {
