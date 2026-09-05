@@ -21,7 +21,7 @@ python tools/verify_source.py
 python tools/build_android.py
 ```
 
-`--check` 只检查已安装的前置环境。普通在线构建可下载并校验固定版本的官方 Gradle；完整缓存后可用 `--offline`。`--java-home`、`--sdk` 和 `--gradle` 支持显式指定路径。输出为 `dist/Quotile-0.3.5.apk`，这是本机构建工具签出的调试 APK。
+`--check` 只检查已安装的前置环境。普通在线构建可下载并校验固定版本的官方 Gradle；完整缓存后可用 `--offline`。`--java-home`、`--sdk` 和 `--gradle` 支持显式指定路径。输出为 `dist/Quotile-0.3.6.apk`，这是本机构建工具签出的调试 APK。
 
 ## 目录导航
 
@@ -32,7 +32,7 @@ python tools/build_android.py
 | `android/app/src/androidTest/` | 使用合成数据的 Android instrumentation |
 | `tools/` | 构建、源码检查、设备检查和交付签名脚本 |
 | `docs/images/` | 当前版本原生控件预览；均为示例数据 |
-| `downloads/` | 已验证的 0.3.5 固定签名安装包与校验信息 |
+| `downloads/` | 已验证的 0.3.6 固定签名安装包与校验信息 |
 | `bridge/`、`design/` | 历史桥接实现和设计资料；手机版不依赖 bridge |
 
 `AccountClient` 管理有时限的登录和读取；`RateLimitParser` 解析返回的 Codex 额度及可用重置次数；`TokenVault` 存储加密凭据；`QuotaStore` 保存设置和快照；`WidgetRenderer` 布局原生 RemoteViews；`QuotaSync`、`Schedule` 管理手动读取与可关闭的定时任务。
@@ -47,14 +47,14 @@ python tools/build_android.py
 
 ## 测试证据
 
-[0.3.5 的构建与 Android 16 模拟器验证](https://github.com/MicHrrrD/quotile/actions/runs/33972461937) 已通过，测试源码提交为 `762e44e72f6202cbdd0798ed9550bf1acd2f4386`。
+[0.3.6 的构建与 Android 16 模拟器验证](https://github.com/MicHrrrD/quotile/actions/runs/33980902708) 已通过，测试源码提交为 `2a8ac35d5e9a80bafb7f30ac3d743285942a2000`。
 
-- 24 个基本原生渲染用例，59 个文字、次数、到期时间、尺寸和字体缩放布局用例，以及 1 个真实 RemoteViews.reapply 更新回归。
+- 24 个基本原生渲染用例，61 个文字、次数、到期时间、尺寸和字体缩放布局用例，以及 1 个真实 RemoteViews.reapply 更新回归。
 - 额度/重置次数与到期明细解析、辅助失败、取消/登出、未知字段、旧快照兼容与持久化。
 - OAuth 回调、PKCE、合成设备码登录、取消/超时和加密存储。
 - 默认不自动读取、关闭定时任务、桌面刷新广播不启动 Activity。
 
-本轮已包含新增到期信息功能及归零/缩小后清除旧行的验证。详细历史见 [VALIDATION.md](../VALIDATION.md)。模拟器通过不能替代所有手机启动器的实机验证；欢迎报告带设备与系统版本的兼容性问题。
+本轮只调整详细卡片的上下留白；沿用到期信息及归零/缩小后清除旧行的验证，并增加截图对应比例的原生预览。详细历史见 [VALIDATION.md](../VALIDATION.md)。模拟器通过不能替代所有手机启动器的实机验证；欢迎报告带设备与系统版本的兼容性问题。
 
 设备检查脚本会安装测试 APK，并使用合成凭据、修改应用测试状态，请只在模拟器或专用测试设备上运行：
 
