@@ -36,6 +36,7 @@ public final class ManualModeTests extends Instrumentation {
             QuotaStore store = new QuotaStore(app);
             store.migrateManualMode();
             AccountContractTests.run(app);
+            DeviceLoginTests.run(app);
             require(!store.automatic(), "Automatic refresh must default OFF");
             long manualGeneration = store.generation();
             store.setAutomatic(true, 15);
@@ -104,7 +105,7 @@ public final class ManualModeTests extends Instrumentation {
             waitForIdleSync();
             require(!QuotaSync.isRunning(),"Reopening/theme change must not refresh");
             require(app.getSystemService(JobScheduler.class).getAllPendingJobs().isEmpty(),"Theme/launcher must not schedule");
-            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 native widget render cases; OAuth callback, PKCE, quota parser and encrypted vault checks passed.\n");
+            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 native widget render cases; OAuth callback, PKCE, quota parser, encrypted vault and synthetic device-login contracts passed.\n");
             resultCode = Activity.RESULT_OK;
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + error.getClass().getSimpleName()+": "+error.getMessage()+"\n");

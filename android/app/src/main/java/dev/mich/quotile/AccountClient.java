@@ -26,8 +26,8 @@ import java.util.Map;
 import javax.net.ssl.HttpsURLConnection;
 
 /**
- * Phone-local OAuth and caller-controlled quota reads. This client owns no background schedule,
- * alarms, polling, or model calls. The caller controls whether a pending read remains allowed.
+ * Phone-local OAuth and caller-controlled quota reads. There is no background schedule, alarms,
+ * or model calls. Device-code polling lives only during an explicit, bounded login session.
  * Protocol provenance (OpenAI Apache-2.0 source, rust-v0.153.4):
  * https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/login/src/server.rs
  * https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/login/src/auth/manager.rs
@@ -45,6 +45,7 @@ public final class AccountClient {
     private static final String PROFILE_CLAIM = "https://api.openai.com/profile";
     private static final Object READ_LOCK = new Object();
     private static LoginSession activeLogin;
+    private static DeviceLoginSession activeDeviceLogin;
     private static ReadSession activeRead;
     private AccountClient() {}
 
@@ -75,6 +76,7 @@ public final class AccountClient {
         synchronized (TokenVault.LOCK) {
             TokenVault.generation++;
             if (activeLogin != null) activeLogin.close();
+            if (activeDeviceLogin != null) activeDeviceLogin.close();
             if (activeRead != null) activeRead.close();
             try { new TokenVault(context).clear(); }
             catch (Exception unavailable) { throw new AccountException("storage_unavailable"); }
@@ -85,6 +87,7 @@ public final class AccountClient {
     public static LoginSession beginLogin(Context context) throws AccountException {
         synchronized (TokenVault.LOCK) {
             if (activeLogin != null) activeLogin.close();
+            if (activeDeviceLogin != null) activeDeviceLogin.close();
             if (activeRead != null) activeRead.close();
             long generation = ++TokenVault.generation;
             try {
@@ -92,6 +95,242 @@ public final class AccountClient {
                 return activeLogin;
             } catch (Exception unavailable) { throw new AccountException("login_listener_unavailable"); }
         }
+    }
+
+    /** Creates no socket, thread or request until requestCode() is explicitly called. */
+    public static DeviceLoginSession beginDeviceLogin(Context context) throws AccountException {
+        return beginDeviceLogin(context, null, 15 * 60 * 1000L);
+    }
+
+    // Package-private dependency injection: fake transports cannot change production endpoints.
+    enum DeviceEndpoint {
+        USER_CODE("https://auth.openai.com/api/accounts/deviceauth/usercode"),
+        TOKEN_POLL("https://auth.openai.com/api/accounts/deviceauth/token"),
+        OAUTH_TOKEN(TOKEN_URL);
+        final String url;
+        DeviceEndpoint(String url) { this.url = url; }
+    }
+    static final class DeviceResponse {
+        final int status;
+        final JSONObject body;
+        DeviceResponse(int status, JSONObject body) { this.status = status; this.body = body; }
+    }
+    interface DeviceLoginTransport {
+        DeviceResponse post(DeviceEndpoint endpoint, String body, long requestDeadline,
+                DeviceLoginSession session) throws AccountException;
+    }
+    static DeviceLoginSession beginDeviceLogin(Context context, DeviceLoginTransport transport,
+            long lifetimeMillis) throws AccountException {
+        if (lifetimeMillis < 1 || lifetimeMillis > 15 * 60 * 1000L)
+            throw new IllegalArgumentException("login_lifetime");
+        synchronized (TokenVault.LOCK) {
+            if (activeLogin != null) activeLogin.close();
+            if (activeDeviceLogin != null) activeDeviceLogin.close();
+            if (activeRead != null) activeRead.close();
+            long generation = ++TokenVault.generation;
+            activeDeviceLogin = new DeviceLoginSession(context.getApplicationContext(), generation,
+                    lifetimeMillis, transport);
+            return activeDeviceLogin;
+        }
+    }
+
+    /**
+     * Official Codex device-code protocol; no loopback listener and no custom browser redirect.
+     * https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/login/src/device_code_auth.rs
+     * A caller-owned worker exists only while the user explicitly completes this login.
+     */
+    public static final class DeviceLoginSession implements AutoCloseable {
+        private static final String VERIFICATION_URL = "https://auth.openai.com/codex/device";
+        private static final String REDIRECT_URL = "https://auth.openai.com/deviceauth/callback";
+        private final Context context;
+        private final long generation, deadline;
+        private final DeviceLoginTransport transport;
+        private volatile String stage = "preparing";
+        private volatile String userCode = "";
+        private String deviceAuthId = "";
+        private long intervalMillis = 5000;
+        private volatile boolean closed, completed, timedOut;
+        private boolean requested, awaiting;
+        private HttpsURLConnection currentConnection;
+        private DeadlineWatch watch;
+
+        private DeviceLoginSession(Context context, long generation, long lifetimeMillis,
+                DeviceLoginTransport transport) {
+            this.context = context;
+            this.generation = generation;
+            this.deadline = SystemClock.elapsedRealtime() + lifetimeMillis;
+            this.transport = transport == null ? (endpoint, body, requestDeadline, session) ->
+                    requestResponse(endpoint.url, "POST", body,
+                            endpoint == DeviceEndpoint.OAUTH_TOKEN ? "application/x-www-form-urlencoded" : "application/json",
+                            null, requestDeadline, null, null, true, session, endpoint) : transport;
+        }
+
+        public String getUserCode() { return closed ? "" : userCode; }
+        public String getVerificationUrl() { return closed ? "" : VERIFICATION_URL; }
+        public String getStage() { return stage; }
+
+        /** Off-main-thread. Returning a code does not start polling or open a browser. */
+        public void requestCode() throws AccountException {
+            synchronized (this) {
+                if (requested) throw new AccountException("login_cancelled");
+                requested = true;
+            }
+            try {
+                synchronized (TokenVault.LOCK) {
+                    check();
+                    watch = new DeadlineWatch(deadline, () -> {
+                        synchronized (TokenVault.LOCK) { timedOut = true; close(); }
+                    });
+                }
+                DeviceResponse response = post(DeviceEndpoint.USER_CODE,
+                        new JSONObject().put("client_id", CLIENT_ID).toString());
+                requireSuccess(response, DeviceEndpoint.USER_CODE);
+                JSONObject payload = response.body;
+                String id = deviceString(payload, "device_auth_id", 1, 4096, "[\\x21-\\x7E]+");
+                String key = payload.has("user_code") ? "user_code" : "usercode";
+                String code = deviceString(payload, key, 4, 128, "[A-Za-z0-9-]+");
+                long interval = pollingInterval(payload);
+                synchronized (TokenVault.LOCK) {
+                    check();
+                    deviceAuthId = id; userCode = code; intervalMillis = interval;
+                    stage = "waiting";
+                }
+            } catch (AccountException failure) { close(); throw failure; }
+              catch (Exception invalid) { close(); throw new AccountException("invalid_response"); }
+        }
+
+        /** Off-main-thread, bounded to this session's fifteen-minute lifetime. */
+        public void awaitCompletion() throws AccountException {
+            check();
+            synchronized (this) {
+                if (awaiting || !requested || userCode.isEmpty()) throw new AccountException("login_cancelled");
+                awaiting = true;
+            }
+            try {
+                while (true) {
+                    String id, code;
+                    synchronized (TokenVault.LOCK) { check(); id = deviceAuthId; code = userCode; }
+                    DeviceResponse polled = post(DeviceEndpoint.TOKEN_POLL,
+                            new JSONObject().put("device_auth_id", id).put("user_code", code).toString());
+                    if (polled.status == 403 || polled.status == 404) {
+                        waitForNextPoll();
+                        continue;
+                    }
+                    requireSuccess(polled, DeviceEndpoint.TOKEN_POLL);
+                    String authorizationCode = deviceString(polled.body, "authorization_code", 1, 8192, "[\\x21-\\x7E]+");
+                    String verifier = deviceString(polled.body, "code_verifier", 43, 128, "[A-Za-z0-9._~-]+");
+                    String challenge = deviceString(polled.body, "code_challenge", 43, 43, "[A-Za-z0-9_-]+");
+                    byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+                    String expected = Base64.encodeToString(digest, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
+                    Arrays.fill(digest, (byte) 0);
+                    if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII), challenge.getBytes(StandardCharsets.US_ASCII)))
+                        throw new AccountException("invalid_response");
+                    synchronized (TokenVault.LOCK) { check(); stage = "exchanging"; }
+                    LinkedHashMap<String, String> body = new LinkedHashMap<>();
+                    body.put("grant_type", "authorization_code"); body.put("code", authorizationCode);
+                    body.put("redirect_uri", REDIRECT_URL); body.put("client_id", CLIENT_ID);
+                    body.put("code_verifier", verifier);
+                    DeviceResponse exchanged = post(DeviceEndpoint.OAUTH_TOKEN, form(body));
+                    requireSuccess(exchanged, DeviceEndpoint.OAUTH_TOKEN);
+                    TokenVault.Credentials fresh = credentials(exchanged.body, null);
+                    synchronized (TokenVault.LOCK) {
+                        check();
+                        stage = "saving";
+                        try { new TokenVault(context).write(fresh); }
+                        catch (Exception unavailable) { throw new AccountException("storage_unavailable"); }
+                        completed = true;
+                        stage = "completed";
+                    }
+                    return; // Explicit quota refresh remains a separate user action.
+                }
+            } catch (AccountException failure) { throw failure; }
+              catch (InterruptedException interrupted) {
+                  Thread.currentThread().interrupt();
+                  throw new AccountException("login_cancelled");
+              }
+              catch (Exception invalid) { throw new AccountException("invalid_response"); }
+            finally { close(); }
+        }
+
+        private DeviceResponse post(DeviceEndpoint endpoint, String body) throws AccountException {
+            check();
+            long requestDeadline = Math.min(deadline, SystemClock.elapsedRealtime() + 25000);
+            DeviceResponse response = transport.post(endpoint, body, requestDeadline, this);
+            check();
+            remaining(requestDeadline);
+            if (response == null || (response.status == 200 && response.body == null))
+                throw new AccountException("invalid_response");
+            return response;
+        }
+
+        private void waitForNextPoll() throws AccountException, InterruptedException {
+            long nextPoll = Math.min(deadline, SystemClock.elapsedRealtime() + intervalMillis);
+            synchronized (TokenVault.LOCK) {
+                while (true) {
+                    check();
+                    long remaining = nextPoll - SystemClock.elapsedRealtime();
+                    if (remaining <= 0) return;
+                    TokenVault.LOCK.wait(remaining);
+                }
+            }
+        }
+
+        private void check() throws AccountException {
+            synchronized (TokenVault.LOCK) {
+                if (timedOut || SystemClock.elapsedRealtime() >= deadline) throw new AccountException("login_timeout");
+                if (closed) throw new AccountException("login_cancelled");
+                checkGeneration(generation);
+            }
+        }
+
+        @Override public void close() {
+            synchronized (TokenVault.LOCK) {
+                closed = true;
+                if (watch != null) watch.close();
+                if (!completed && generation == TokenVault.generation) TokenVault.generation++;
+                if (activeDeviceLogin == this) activeDeviceLogin = null;
+                // Strings cannot be forcibly erased. Drop session references promptly.
+                userCode = ""; deviceAuthId = "";
+                HttpsURLConnection connection = currentConnection;
+                currentConnection = null;
+                TokenVault.LOCK.notifyAll();
+                if (connection != null) connection.disconnect();
+            }
+        }
+    }
+
+    private static String deviceString(JSONObject body, String key, int minimum, int maximum, String pattern)
+            throws AccountException {
+        Object raw = body == null ? null : body.opt(key);
+        if (!(raw instanceof String)) throw new AccountException("invalid_response");
+        String value = (String) raw;
+        if (value.length() < minimum || value.length() > maximum || !value.matches(pattern))
+            throw new AccountException("invalid_response");
+        return value;
+    }
+
+    private static long pollingInterval(JSONObject body) throws AccountException {
+        Object raw = body.opt("interval");
+        if (raw == null) return 5000;
+        String value = raw instanceof String ? ((String) raw).trim() : raw instanceof Number ? raw.toString() : "";
+        if (!value.matches("[0-9]{1,10}")) throw new AccountException("invalid_response");
+        try {
+            long seconds = Long.parseLong(value);
+            // Never poll sooner than the server requests; long waits end at the session deadline.
+            // The upstream default is zero. A one-second floor avoids an accidental busy loop.
+            return Math.max(1, seconds) * 1000;
+        } catch (NumberFormatException invalid) { throw new AccountException("invalid_response"); }
+    }
+
+    private static void requireSuccess(DeviceResponse response, DeviceEndpoint endpoint) throws AccountException {
+        if (response.status == 200) return;
+        if (endpoint == DeviceEndpoint.USER_CODE && (response.status == 403 || response.status == 404))
+            throw new AccountException("device_login_unavailable");
+        if (response.status == 401 || response.status == 400) throw new AccountException("login_required");
+        if (response.status == 403) throw new AccountException("access_unavailable");
+        if (response.status == 429) throw new AccountException("rate_limited");
+        if (response.status >= 300 && response.status < 400) throw new AccountException("unexpected_redirect");
+        throw new AccountException("service_unavailable");
     }
 
     /** Cancels only the current read, without logging out or changing the vault. */
@@ -175,7 +414,8 @@ public final class AccountClient {
         private final String redirect;
         private byte[] state, verifier;
         private String authorizationUrl;
-        private volatile boolean closed, completed, timedOut;
+        private volatile boolean closed, completed, timedOut, receivedCallback;
+        private volatile String stage = "preparing";
         private volatile Socket currentSocket;
         private volatile HttpsURLConnection currentConnection;
         private boolean awaiting;
@@ -216,12 +456,16 @@ public final class AccountClient {
         }
 
         public String getAuthorizationUrl() { return closed ? "" : authorizationUrl; }
+        public String getStage() { return stage; }
+        /** True only after a matching state and a non-empty bounded authorization code. */
+        public boolean hasReceivedCallback() { return receivedCallback; }
 
         /** Run off the main thread only after the user taps login. Stops within the login window. */
         public void awaitCompletion() throws AccountException {
             synchronized (this) {
                 if (awaiting || closed) throw new AccountException("login_cancelled");
                 awaiting = true;
+                stage = "waiting";
             }
             synchronized (TokenVault.LOCK) {
                 if (closed) throw new AccountException("login_cancelled");
@@ -251,6 +495,8 @@ public final class AccountClient {
                         }
                         String code = parameters.get("code");
                         if (code == null || code.isEmpty() || code.length() > 8192) { respond(connection, false); continue; }
+                        receivedCallback = true;
+                        stage = "exchanging";
                         try {
                             byte[] verifierCopy;
                             synchronized (TokenVault.LOCK) {
@@ -270,10 +516,13 @@ public final class AccountClient {
                             TokenVault.Credentials credentials = credentials(response, null);
                             synchronized (TokenVault.LOCK) {
                                 checkGeneration(generation);
+                                if (timedOut || SystemClock.elapsedRealtime() >= deadline) throw new AccountException("login_timeout");
                                 if (closed) throw new AccountException("login_cancelled");
+                                stage = "saving";
                                 try { new TokenVault(context).write(credentials); }
                                 catch (Exception failure) { throw new AccountException("storage_unavailable"); }
                                 completed = true;
+                                stage = "completed";
                             }
                             respond(connection, true);
                             return; // Login success never fetches usage.
@@ -450,23 +699,37 @@ public final class AccountClient {
 
     private static JSONObject request(String endpoint, String method, String body, String contentType,
             TokenVault.Credentials credentials, long deadline, LoginSession login, ReadSession operation, boolean auth) throws AccountException {
+        return requestResponse(endpoint, method, body, contentType, credentials, deadline, login, operation,
+                auth, null, null).body;
+    }
+
+    private static DeviceResponse requestResponse(String endpoint, String method, String body, String contentType,
+            TokenVault.Credentials credentials, long deadline, LoginSession login, ReadSession operation,
+            boolean auth, DeviceLoginSession device, DeviceEndpoint deviceEndpoint) throws AccountException {
         HttpsURLConnection connection = null;
         DeadlineWatch requestWatch = null;
         try {
-            if (!TOKEN_URL.equals(endpoint) && !QUOTA_URL.equals(endpoint)) throw new AccountException("invalid_endpoint");
-            checkRequest(login, operation);
+            if (device == null) {
+                if (!TOKEN_URL.equals(endpoint) && !QUOTA_URL.equals(endpoint)) throw new AccountException("invalid_endpoint");
+            } else if (deviceEndpoint == null || !deviceEndpoint.url.equals(endpoint) || !"POST".equals(method)) {
+                throw new AccountException("invalid_endpoint");
+            }
+            checkRequest(login, operation, device);
             int timeout = remaining(deadline);
             connection = (HttpsURLConnection) new URL(endpoint).openConnection();
             if (login != null) {
                 synchronized (TokenVault.LOCK) {
-                    checkRequest(login, operation);
+                    checkRequest(login, operation, device);
                     login.currentConnection = connection;
                 }
+            }
+            if (device != null) {
+                synchronized (TokenVault.LOCK) { device.check(); device.currentConnection = connection; }
             }
             if (operation != null) operation.register(connection);
             // Login has a three-minute browser window but token exchange gets its own 25-second
             // disconnect watchdog. Read operations already own a watchdog spanning all requests.
-            if (login != null) {
+            if (login != null || device != null) {
                 HttpsURLConnection tokenConnection = connection;
                 requestWatch = new DeadlineWatch(deadline, tokenConnection::disconnect);
             }
@@ -485,16 +748,20 @@ public final class AccountClient {
                 try {
                     connection.setDoOutput(true); connection.setFixedLengthStreamingMode(bytes.length);
                     connection.setRequestProperty("Content-Type", contentType);
-                    checkRequest(login, operation);
+                    checkRequest(login, operation, device);
                     try (OutputStream output = connection.getOutputStream()) {
-                        checkRequest(login, operation); remaining(deadline); output.write(bytes);
+                        checkRequest(login, operation, device); remaining(deadline); output.write(bytes);
                     }
                 } finally { Arrays.fill(bytes, (byte) 0); }
             }
             connection.setReadTimeout(remaining(deadline));
-            checkRequest(login, operation);
+            checkRequest(login, operation, device);
             int status = connection.getResponseCode();
-            checkRequest(login, operation); remaining(deadline);
+            checkRequest(login, operation, device); remaining(deadline);
+            if (device != null && deviceEndpoint == DeviceEndpoint.TOKEN_POLL && (status == 403 || status == 404))
+                return new DeviceResponse(status, null);
+            if (device != null && deviceEndpoint == DeviceEndpoint.USER_CODE && (status == 403 || status == 404))
+                throw new AccountException("device_login_unavailable");
             if (status != 200) {
                 if (status == 401) throw new AccountException(auth ? "login_required" : "unauthorized");
                 if (auth && status == 400) throw new AccountException("login_required");
@@ -510,7 +777,7 @@ public final class AccountClient {
             try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                 byte[] buffer = new byte[4096]; int count;
                 while (true) {
-                    checkRequest(login, operation);
+                    checkRequest(login, operation, device);
                     connection.setReadTimeout(remaining(deadline));
                     count = input.read(buffer);
                     if (count == -1) break;
@@ -518,17 +785,17 @@ public final class AccountClient {
                     output.write(buffer, 0, count);
                 }
                 remaining(deadline);
-                checkRequest(login, operation);
-                return new JSONObject(output.toString("UTF-8"));
+                checkRequest(login, operation, device);
+                return new DeviceResponse(status, new JSONObject(output.toString("UTF-8")));
             }
         } catch (AccountException failure) { throw failure; }
           catch (javax.net.ssl.SSLException tls) {
-              checkRequest(login, operation); remaining(deadline);
+              checkRequest(login, operation, device); remaining(deadline);
               throw new AccountException("tls_error");
           }
-          catch (SocketTimeoutException timeout) { checkRequest(login, operation); throw new AccountException("network_timeout"); }
+          catch (SocketTimeoutException timeout) { checkRequest(login, operation, device); throw new AccountException("network_timeout"); }
           catch (java.io.IOException offline) {
-              checkRequest(login, operation); remaining(deadline);
+              checkRequest(login, operation, device); remaining(deadline);
               throw new AccountException("network_unavailable");
           }
           catch (Exception invalid) { throw new AccountException("invalid_response"); }
@@ -539,16 +806,22 @@ public final class AccountClient {
                     if (login.currentConnection == connection) login.currentConnection = null;
                 }
             }
+            if (device != null) {
+                synchronized (TokenVault.LOCK) {
+                    if (device.currentConnection == connection) device.currentConnection = null;
+                }
+            }
             if (operation != null) operation.release(connection);
             if (connection != null) connection.disconnect();
         }
     }
 
-    private static void checkRequest(LoginSession login, ReadSession operation) throws AccountException {
+    private static void checkRequest(LoginSession login, ReadSession operation, DeviceLoginSession device) throws AccountException {
         synchronized (TokenVault.LOCK) {
             if (operation != null) operation.check();
+            if (device != null) device.check();
             if (login != null) {
-                if (login.timedOut) throw new AccountException("login_timeout");
+                if (login.timedOut || SystemClock.elapsedRealtime() >= login.deadline) throw new AccountException("login_timeout");
                 if (login.closed) throw new AccountException("login_cancelled");
                 checkGeneration(login.generation);
             }

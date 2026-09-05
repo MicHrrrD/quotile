@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private TextView accountView;
     private TextView refreshPolicyView;
     private Button loginButton;
+    private Button deviceLoginButton;
     private Button disconnectButton;
     private Button refreshButton;
     private Switch demoSwitch;
@@ -183,6 +184,9 @@ public final class MainActivity extends Activity {
         disconnectButton.setOnClickListener(view -> disconnect());
         accountActions.addView(disconnectButton, weighted(1, 48, 10));
         account.addView(accountActions, space(-1, -2, 17));
+        deviceLoginButton = button("设备码登录 · 网页卡住时使用", false);
+        deviceLoginButton.setOnClickListener(view -> startLogin(true));
+        account.addView(deviceLoginButton, space(-1, 48, 10));
         refreshButton = button("刷新额度", false);
         refreshButton.setOnClickListener(view -> refresh());
         account.addView(refreshButton, space(-1, 50, 10));
@@ -354,12 +358,17 @@ public final class MainActivity extends Activity {
     }
 
     private void startLogin() {
+        startLogin(false);
+    }
+
+    private void startLogin(boolean deviceCode) {
         if (disconnecting || QuotaSync.isRunning()) {
             toast("请等待当前操作完成");
             return;
         }
         awaitingLoginReturn = true;
-        startActivity(new Intent(this, LoginActivity.class).setAction(LoginActivity.ACTION_USER_LOGIN));
+        startActivity(new Intent(this, LoginActivity.class).setAction(deviceCode
+                ? LoginActivity.ACTION_DEVICE_LOGIN : LoginActivity.ACTION_USER_LOGIN));
     }
 
     private void refresh() {
@@ -412,6 +421,7 @@ public final class MainActivity extends Activity {
         // The click handlers reject overlapping requests. Keep these usable if a refresh
         // window is closed early; there is deliberately no background UI polling timer.
         loginButton.setEnabled(!disconnecting);
+        deviceLoginButton.setEnabled(!disconnecting);
         disconnectButton.setVisibility(signedIn ? View.VISIBLE : View.GONE);
         disconnectButton.setEnabled(!disconnecting);
         refreshButton.setEnabled(!disconnecting);
