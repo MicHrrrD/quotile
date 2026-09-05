@@ -40,6 +40,7 @@ final class AccountContractTests {
         rejects(()->RateLimitParser.parse(payload(window(604800,101,now),null),now),"Over-100 usage rejected");
         rejects(()->RateLimitParser.parse(payload(window(604800,"25",now),null),now),"String usage rejected");
         rejects(()->RateLimitParser.parse(payload(null,null),now),"Missing quota not invented");
+        resetCreditContract(app, week, five, now);
 
         String valid="GET /auth/callback?code=test-code&state=test-state HTTP/1.1\r\nHost: localhost:1455\r\n\r\n";
         require(parse(valid).get("state").equals("test-state"),"Valid loopback callback");
@@ -76,6 +77,87 @@ final class AccountContractTests {
         }
         require(!AccountClient.isSignedIn(app),"Synthetic credentials cleaned up");
     }
+
+    private static void resetCreditContract(Context app, JSONObject week, JSONObject five, long now) throws Exception {
+        for (Object count : new Object[]{0, 2, Integer.MAX_VALUE, 3L, Long.MAX_VALUE}) {
+            JSONObject response = payload(week, five).put("rate_limit_reset_credits",
+                    new JSONObject().put("available_count", count));
+            JSONObject snapshot = RateLimitParser.parse(response, now);
+            require(snapshot.getLong("availableResetCount") == ((Number) count).longValue(),
+                    "Available reset count preserves non-negative integers, including zero and i64 maximum");
+            require(snapshot.getJSONObject("weekly").getDouble("remainingPercent") == 75,
+                    "Reset credits do not change weekly quota");
+        }
+        Object[] invalidCounts = {JSONObject.NULL, -1, -1L, Long.MIN_VALUE, 1.0, 1.5, "2", true,
+                new java.math.BigInteger("9223372036854775808"), new JSONObject()};
+        for (Object count : invalidCounts) {
+            JSONObject response = payload(week, five).put("rate_limit_reset_credits",
+                    new JSONObject().put("available_count", count));
+            JSONObject snapshot = RateLimitParser.parse(response, now);
+            require(snapshot.isNull("availableResetCount"), "Malformed optional reset count is unknown");
+            require(snapshot.getJSONObject("weekly").getDouble("remainingPercent") == 75,
+                    "Malformed reset data must not invalidate a successful quota read");
+        }
+        JSONObject overflow = new JSONObject("{\"available_count\":9223372036854775808}");
+        require(RateLimitParser.parse(payload(week, five).put("rate_limit_reset_credits", overflow), now)
+                .isNull("availableResetCount"), "JSON integer overflow never saturates to a count");
+        require(RateLimitParser.parse(payload(week, five), now).isNull("availableResetCount"),
+                "Absent reset summary is unknown, not zero");
+        for (Object summary : new Object[]{JSONObject.NULL, "unavailable", true, new JSONObject()}) {
+            require(RateLimitParser.parse(payload(week, five).put("rate_limit_reset_credits", summary), now)
+                    .isNull("availableResetCount"), "Absent count or invalid summary does not invalidate quota");
+        }
+        JSONObject independentAmounts = payload(week, five)
+                .put("credits", new JSONObject().put("balance", "123.45").put("has_credits", true))
+                .put("total_earned_count", 99)
+                .put("rate_limit_reset_credits", new JSONObject().put("total_earned_count", 8)
+                        .put("credits", new org.json.JSONArray().put(new JSONObject().put("status", "available"))));
+        require(RateLimitParser.parse(independentAmounts, now).isNull("availableResetCount"),
+                "Balance, earned total and available detail rows do not invent an available count");
+        independentAmounts.getJSONObject("rate_limit_reset_credits").put("available_count", 2);
+        require(RateLimitParser.parse(independentAmounts, now).getLong("availableResetCount") == 2,
+                "Server summary is authoritative even when detail length and earned total differ");
+
+        QuotaStore store = new QuotaStore(app);
+        try {
+            JSONObject snapshot = RateLimitParser.parse(independentAmounts, now);
+            store.saveSnapshot(snapshot, store.generation());
+            require(Long.valueOf(2).equals(new QuotaStore(app).state().availableResetCount),
+                    "Available reset count survives a stored snapshot round trip");
+            store.saveError("network_timeout", store.generation());
+            WidgetState stale = new QuotaStore(app).state();
+            require(stale.stale && Long.valueOf(2).equals(stale.availableResetCount),
+                    "Failed refresh preserves the last known count as stale");
+            snapshot.put("availableResetCount", 0L);
+            store.saveSnapshot(snapshot, store.generation());
+            require(Long.valueOf(0).equals(new QuotaStore(app).state().availableResetCount),
+                    "Stored zero remains known, distinct from unknown");
+            snapshot.put("availableResetCount", Long.MAX_VALUE);
+            store.saveSnapshot(snapshot, store.generation());
+            require(Long.valueOf(Long.MAX_VALUE).equals(new QuotaStore(app).state().availableResetCount),
+                    "Stored i64 maximum remains exact");
+            snapshot.remove("availableResetCount");
+            store.saveSnapshot(snapshot, store.generation());
+            WidgetState old = new QuotaStore(app).state();
+            require(old.availableResetCount == null && Double.valueOf(75).equals(old.weeklyRemaining),
+                    "Old schemaVersion 1 snapshots without reset counts remain compatible");
+            for (Object count : invalidCounts) {
+                snapshot.put("availableResetCount", count);
+                store.saveSnapshot(snapshot, store.generation());
+                WidgetState invalid = new QuotaStore(app).state();
+                require(invalid.availableResetCount == null && Double.valueOf(75).equals(invalid.weeklyRemaining),
+                        "Malformed stored optional reset count must not discard quota");
+            }
+            snapshot = RateLimitParser.parse(payload(week, five), now);
+            store.saveSnapshot(snapshot, store.generation());
+            require(new QuotaStore(app).state().availableResetCount == null,
+                    "A new response with no reset count must not carry forward a previous count");
+        } finally {
+            store.clearSnapshot();
+        }
+        require(QuotaStore.demoState().availableResetCount.equals(2L), "Demo count is an explicit example");
+    }
+
     private static java.util.Map<String,String> parse(String request) throws Exception {
         return AccountClient.callbackParameters(new ByteArrayInputStream(request.getBytes(StandardCharsets.US_ASCII)),
                 1455,SystemClock.elapsedRealtime()+3000);

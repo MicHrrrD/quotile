@@ -6,6 +6,7 @@ import org.json.JSONObject;
  * Reads only the primary Codex quota bucket. It does not infer another ChatGPT product's quota.
  * Source: openai/codex rust-v0.153.4, codex-rs/backend-client/src/client.rs,
  * rate_limit_snapshots_from_payload / map_rate_limit_window / window_minutes_from_seconds.
+ * Reset count: backend-client/src/types.rs RateLimitResetCreditsSummary.available_count.
  */
 public final class RateLimitParser {
     private RateLimitParser() {}
@@ -42,10 +43,23 @@ public final class RateLimitParser {
             }
         }
         if (weekly == null && fiveHour == null) throw new AccountClient.AccountException("quota_window_unavailable");
+        // This optional server summary is authoritative: detail lists may be truncated and
+        // total_earned_count / credits.balance describe different quantities.
+        JSONObject resetCredits = payload.optJSONObject("rate_limit_reset_credits");
+        Long availableResetCount = optionalNonNegativeInteger(
+                resetCredits == null ? null : resetCredits.opt("available_count"));
         return new JSONObject().put("schemaVersion", 1).put("plan", plan == null ? JSONObject.NULL : plan)
                 .put("weekly", weekly == null ? JSONObject.NULL : weekly)
                 .put("fiveHour", fiveHour == null ? JSONObject.NULL : fiveHour)
+                .put("availableResetCount", availableResetCount == null ? JSONObject.NULL : availableResetCount)
                 .put("updatedAt", now).put("stale", false).put("error", JSONObject.NULL);
+    }
+
+    /** Optional counts must not coerce strings, floating point values, or overflowing numbers. */
+    static Long optionalNonNegativeInteger(Object raw) {
+        if (!(raw instanceof Integer) && !(raw instanceof Long)) return null;
+        long value = ((Number) raw).longValue();
+        return value >= 0 ? value : null;
     }
 
     private static JSONObject nullableObject(JSONObject parent, String name) throws Exception {

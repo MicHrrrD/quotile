@@ -4,6 +4,8 @@ package dev.mich.quotile;
 public final class WidgetState {
     public Double weeklyRemaining;
     public Double fiveHourRemaining;
+    /** Server-reported usable Codex reset credits; null means unavailable, not zero. */
+    public Long availableResetCount;
     public long weeklyResetAt;
     public long fiveHourResetAt;
     public long updatedAt;

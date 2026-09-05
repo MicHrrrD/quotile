@@ -64,7 +64,7 @@ public final class WidgetUpdate {
         width = Math.max(110, Math.min(width, 700));
         height = Math.max(40, Math.min(height, 300));
         RemoteViews rv = WidgetRenderer.remoteViews(c, width, height, state, dark, QuotaSync.isRunning());
-        rv.setContentDescription(R.id.widget_root, description(state));
+        rv.setContentDescription(R.id.widget_root, description(state, height >= 110));
         Intent open = new Intent(c, MainActivity.class);
         rv.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         Intent refresh = new Intent(c, WidgetRefreshReceiver.class).setAction(WidgetRefreshReceiver.ACTION_REFRESH);
@@ -74,10 +74,11 @@ public final class WidgetUpdate {
         rv.setOnClickPendingIntent(R.id.widget_refresh, refreshAction);
         return rv;
     }
-    private static String description(WidgetState s) {
+    private static String description(WidgetState s, boolean showResets) {
         if (!s.configured) return "余量，待连接，点按打开设置";
         String status = QuotaSync.isRunning() ? "正在刷新。" : s.demo ? "演示数据。" : (s.stale ? "旧数据，待手动刷新。" : "上次读取的额度。");
         return "Codex 额度。" + status + "每周剩余" + amount(s.weeklyRemaining) + "，五小时剩余" + amount(s.fiveHourRemaining)
+                + (showResets ? "。可用重置" + (s.availableResetCount == null ? "次数未提供" : s.availableResetCount + "次") : "")
                 + "。点按打开设置，右侧按钮刷新。";
     }
     private static String amount(Double percent) {

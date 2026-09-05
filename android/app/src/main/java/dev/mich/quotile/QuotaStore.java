@@ -77,9 +77,16 @@ public final class QuotaStore {
         return state;
     }
     public void saveSnapshot(JSONObject json, long expectedGeneration) throws Exception {
-        parse(json);
+        WidgetState validated = parse(json);
+        JSONObject stored = new JSONObject(json.toString());
+        if (json.has("availableResetCount")) {
+            // JSONObject serializes e.g. 1.0 as 1. Normalize before storage so an invalid
+            // floating-point count cannot become a seemingly valid integer after reloading.
+            stored.put("availableResetCount", validated.availableResetCount == null
+                    ? JSONObject.NULL : validated.availableResetCount);
+        }
         synchronized (LOCK) {
-            if (generation() == expectedGeneration && !prefs.edit().putString("snapshot", json.toString())
+            if (generation() == expectedGeneration && !prefs.edit().putString("snapshot", stored.toString())
                     .remove("lastError").commit()) throw new java.io.IOException("Snapshot could not be saved");
         }
     }
@@ -98,6 +105,8 @@ public final class QuotaStore {
         if (state.updatedAt < 0 || state.updatedAt > System.currentTimeMillis()/1000 + 300) throw new IllegalArgumentException("updatedAt");
         state.stale = json.getBoolean("stale");
         state.error = json.isNull("error") ? null : json.optString("error", null);
+        // Additive schemaVersion 1 field: older snapshots and malformed optional data stay usable.
+        state.availableResetCount = RateLimitParser.optionalNonNegativeInteger(json.opt("availableResetCount"));
         if (!json.has("weekly") || !json.has("fiveHour")) throw new IllegalArgumentException("missing windows");
         JSONObject weekly = json.isNull("weekly") ? null : json.getJSONObject("weekly");
         JSONObject fiveHour = json.isNull("fiveHour") ? null : json.getJSONObject("fiveHour");
@@ -121,6 +130,7 @@ public final class QuotaStore {
     public static WidgetState demoState() {
         WidgetState state = new WidgetState();
         state.weeklyRemaining = 68.0; state.fiveHourRemaining = 84.0;
+        state.availableResetCount = 2L;
         long now = System.currentTimeMillis()/1000;
         state.weeklyResetAt = now + 3 * 86400 + 7200; state.fiveHourResetAt = now + 9000;
         state.updatedAt = now; state.demo = true; state.configured = true; state.plan = "Pro 5x";

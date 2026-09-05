@@ -18,10 +18,17 @@
         android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
         android:fontFamily="sans-serif-medium" android:textColor="#181818" android:textSize="64sp"
         android:maxLines="1" android:scrollHorizontally="false" android:ellipsize="end"
-        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14sp"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14dp"
         android:autoSizeMaxTextSize="64sp" android:autoSizeStepGranularity="1sp"
         android:importantForAccessibility="no" />
     <TextView android:id="@+id/widget_reset" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="true"
+        android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="11sp"
+        android:maxLines="1" android:scrollHorizontally="false" android:ellipsize="end"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="8dp"
+        android:autoSizeMaxTextSize="11sp" android:autoSizeStepGranularity="1dp"
+        android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_reset_count" android:layout_width="1dp" android:layout_height="1dp"
         android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="true"
         android:fontFamily="sans-serif" android:textColor="#181818" android:textSize="11sp"
         android:maxLines="1" android:scrollHorizontally="false" android:ellipsize="end"
@@ -39,7 +46,7 @@
         android:visibility="gone" android:gravity="left|center_vertical" android:includeFontPadding="false"
         android:fontFamily="sans-serif-medium" android:textColor="#181818" android:textSize="64sp"
         android:maxLines="1" android:scrollHorizontally="false" android:ellipsize="end"
-        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14sp"
+        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="14dp"
         android:autoSizeMaxTextSize="64sp" android:autoSizeStepGranularity="1sp"
         android:importantForAccessibility="no" />
     <TextView android:id="@+id/widget_secondary_reset" android:layout_width="1dp" android:layout_height="1dp"

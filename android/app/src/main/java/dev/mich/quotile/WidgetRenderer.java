@@ -121,22 +121,17 @@ public final class WidgetRenderer {
         float top = height > 200 ? 22 : small ? 10 : 16;
         if (width >= 220) sourceLabel("Codex 额度 · 每周剩余", pad, top, width - pad - 54, 18);
         else label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 18, secondary);
-        float valueTop = top + (small ? 18 : 22);
-        float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
-        valueTop += detailContentOffset(valueTop, valueHeight, small);
+        DetailMetrics layout = detailMetrics(top, small);
+        float valueTop = layout.valueTop;
+        float valueHeight = layout.valueHeight;
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop,
                 width < 180 ? contentWidth : contentWidth * .65f, valueHeight, false);
-        float barY = valueTop + valueHeight + (small ? 8 : 10);
+        float barY = valueTop + valueHeight + layout.barGap;
         float barHeight = small ? 9 : 11;
         bar(R.id.widget_progress, pad, barY, contentWidth, barHeight, state.weeklyRemaining);
-        float resetY = barY + barHeight + 9;
+        float resetY = barY + barHeight + layout.resetGap;
         label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, contentWidth, 16, secondary);
-        if (height >= 142) {
-            label(R.id.widget_status, status(), pad, Math.min(height - 20, Math.max(resetY + 18, height - 25)), contentWidth, 16, muted);
-        } else if (refreshing || old() || state.demo) {
-            // Keep read state visible even when the short card has room for only one footer.
-            label(R.id.widget_reset, status(), pad, resetY, contentWidth, 16, secondary);
-        }
+        detailFooter(pad, resetY, contentWidth);
     }
 
     private void detail() {
@@ -146,34 +141,58 @@ public final class WidgetRenderer {
         float secondX = pad + column + gap;
         boolean small = height < 134;
         float top = height > 200 ? 22 : small ? 10 : 16;
-        float valueTop = top + (small ? 18 : 22);
-        float valueHeight = small ? 32 : Math.min(63, 36 + (height - 134) * .25f);
-        valueTop += detailContentOffset(valueTop, valueHeight, small);
+        DetailMetrics layout = detailMetrics(top, small);
+        float valueTop = layout.valueTop;
+        float valueHeight = layout.valueHeight;
         sourceLabel("Codex 额度 · 每周", pad, top, column, 18);
         label(R.id.widget_secondary_label, "5 小时剩余", secondX, top, width - secondX - 49, 18, secondary);
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop, column, valueHeight, false);
         amount(R.id.widget_secondary_value, state.fiveHourRemaining, secondX, valueTop, column, valueHeight, false);
-        float barY = valueTop + valueHeight + (small ? 8 : 10);
+        float barY = valueTop + valueHeight + layout.barGap;
         float barHeight = small ? 9 : 11;
         bar(R.id.widget_progress, pad, barY, column, barHeight, state.weeklyRemaining);
         bar(R.id.widget_secondary_progress, secondX, barY, column, barHeight, state.fiveHourRemaining);
-        float resetY = barY + barHeight + 9;
+        float resetY = barY + barHeight + layout.resetGap;
         label(R.id.widget_reset, reset(state.weeklyResetAt), pad, resetY, column, 16, secondary);
         label(R.id.widget_secondary_reset, reset(state.fiveHourResetAt), secondX, resetY, column, 16, secondary);
-        if (height >= 142) {
-            label(R.id.widget_status, status(), pad, Math.min(height - 20, Math.max(resetY + 18, height - 25)), width - pad * 2, 16, muted);
-        } else if (refreshing || old() || state.demo) {
-            label(R.id.widget_reset, status(), pad, resetY, column, 16, secondary);
-        }
+        // Reset credits are shared by the account, so show one count below both windows.
+        detailFooter(pad, resetY, width - pad * 2);
     }
 
-    private float detailContentOffset(float valueTop, float valueHeight, boolean small) {
-        if (height < 142) return 0;
-        float resetY = valueTop + valueHeight + (small ? 8 : 10) + (small ? 9 : 11) + 9;
-        float footerY = Math.min(height - 20, Math.max(resetY + 18, height - 25));
-        // Move only the main content into spare vertical space. Keep the update line
-        // anchored and preserve at least the existing two-dp gap on shorter cards.
-        return Math.min(10, Math.max(0, footerY - resetY - 18));
+    private static final class DetailMetrics {
+        float valueTop, valueHeight, barGap, resetGap;
+    }
+
+    private DetailMetrics detailMetrics(float top, boolean small) {
+        DetailMetrics layout = new DetailMetrics();
+        layout.valueTop = top + (small ? 18 : 22);
+        layout.barGap = small ? 4 : 10;
+        layout.resetGap = small ? 6 : 9;
+        float barHeight = small ? 9 : 11;
+        // Reserve two complete 16dp footer lines, plus the update line on taller cards.
+        float resetLimit = height - (height >= 160 ? 61 : 42);
+        float afterValue = layout.barGap + barHeight + layout.resetGap;
+        layout.valueHeight = Math.min(small ? 32 : Math.min(63, 36 + (height - 134) * .25f),
+                resetLimit - layout.valueTop - afterValue);
+        if (height >= 142) {
+            float spare = resetLimit - layout.valueTop - layout.valueHeight - afterValue;
+            layout.valueTop += Math.min(10, Math.max(0, spare));
+        }
+        return layout;
+    }
+
+    private void detailFooter(float pad, float resetY, float contentWidth) {
+        String count = state.availableResetCount == null ? "可用重置 —"
+                : "可用重置 " + state.availableResetCount + " 次";
+        if (height < 160) {
+            // Short two-row cards prioritize both reset rows; retain refresh/stale indicators.
+            if (refreshing) count += " · 刷新中";
+            else if (state.demo) count += " · 演示";
+            else if (old()) count += " · 旧数据";
+        }
+        label(R.id.widget_reset_count, count, pad, resetY + 18, contentWidth, 16, secondary);
+        if (height >= 160)
+            label(R.id.widget_status, status(), pad, height - 25, contentWidth, 16, muted);
     }
 
     private void unconfigured() {
