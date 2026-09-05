@@ -14,7 +14,8 @@ def run(args, timeout=90):
 
 run(['adb','install','-r',str(ROOT/'android/app/build/outputs/apk/debug/app-debug.apk')])
 run(['adb','install','-r',str(ROOT/'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')])
-output = run(['adb','shell','am','instrument','-w','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
+# Raw mode preserves INSTRUMENTATION_CODE even when the runner returns a stream.
+output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
 if 'INSTRUMENTATION_CODE: -1' not in output or 'PASS: settings launch' not in output or 'FAIL:' in output:
     raise RuntimeError('Manual-mode instrumentation did not pass')
 print('Android 16 manual-mode verification passed.')
