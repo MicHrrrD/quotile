@@ -1,0 +1,16 @@
+# Local build products
+android/.gradle/
+android/local.properties
+android/**/build/
+dist/
+*.class
+__pycache__/
+*.pyc
+
+# Pairing data and signing material stay on the user's own host
+config.json
+bridge-config.json
+*.keystore
+*.jks
+*.pem
+.env

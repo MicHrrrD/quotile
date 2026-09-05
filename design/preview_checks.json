@@ -1,0 +1,11 @@
+{
+  "previewOnly": true,
+  "androidRuntimeExecuted": false,
+  "checkedLayouts": 4536,
+  "checks": [
+    "text right bounds",
+    "text bottom bounds",
+    "Java breakpoint mirror"
+  ],
+  "limitations": "Python font metrics approximate Android; compilation and real launcher rendering are separate checks."
+}

@@ -1,0 +1,12 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#2B816D</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#F3F5F2</item>
+    </style>
+    <string name="slim_description">一行看本周余量 · 高×宽 1×5 · 可自由缩放</string>
+    <string name="detail_description">每周与五小时余量 · 高×宽 2×5 · 可自由缩放</string>
+</resources>
