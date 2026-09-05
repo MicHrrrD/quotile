@@ -64,7 +64,7 @@ python tools/verify_source.py
 python tools/build_android.py
 ```
 
-工作流验证 APK 签名，并在 Android16 上检查默认关闭、取消任务、桌面广播不启动 Activity、额度解析及加密存储。卡片在原生 Android 控件上渲染，截图随构建产物提供。[0.3.2 构建与 Android16 检查已通过](https://github.com/MicHrrrD/quotile/actions/runs/33962762493)，包括新增的 13 个底注、字体缩放和 Codex 来源标记布局用例。0.3.3 的构建、渲染与交付签名待本次验证完成后记录；具体结果及安装包校验值见 `VALIDATION.md`。云端测试使用合成数据；用户另已确认 0.3.1 在手机上完成设备码登录。
+工作流验证 APK 签名，并在 Android16 上检查默认关闭、取消任务、桌面广播不启动 Activity、额度解析及加密存储。卡片在原生 Android 控件上渲染，截图随构建产物提供。[0.3.3 构建与 Android16 检查已通过](https://github.com/MicHrrrD/quotile/actions/runs/33963740595)，共 24 种基本渲染与 17 种底注、字体缩放和 Codex 来源布局用例，包含此次 350×180dp 的 2×5 微调预览。交付签名已验证；具体结果及安装包校验值见 `VALIDATION.md`。云端测试使用合成数据；用户另已确认 0.3.1 在手机上完成设备码登录。
 
 Actions 产物包含测试用调试 APK 和 Android 官方签名工具；最终交付使用 `tools/sign_apk.py` 在本地重签，验证证书与全部应用内容未变。签名私钥和口令不进入源码仓库。
 
