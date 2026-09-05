@@ -40,7 +40,7 @@ GRADLE_URL = "https://downloads.gradle.org/distributions/gradle-8.11.1-bin.zip"
 # Gradle's published binary ZIP checksum: https://gradle.org/release-checksums/
 GRADLE_SHA256 = "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
 BUILD_TOOLS = "35.0.0"
-APK_NAME = "Quotile-0.3.5.apk"
+APK_NAME = "Quotile-0.3.6.apk"
 WINDOWS = os.name == "nt"
 
 

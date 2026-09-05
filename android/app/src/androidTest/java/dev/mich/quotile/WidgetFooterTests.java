@@ -80,6 +80,10 @@ final class WidgetFooterTests {
             renderCase(instrumentation, app, previews, 350, 160, 1.3f, true, Credits.ZERO,
                     mode, false, false, false);
 
+        // Match the tall, narrow two-row Fold7 card in the spacing report.
+        for (boolean dual : new boolean[]{false, true})
+            renderCase(instrumentation, app, previews, 250, 235, 1f, dual, Credits.FUTURE,
+                    Mode.NORMAL, true, false, true);
         // Native 2 x 5 previews use actual renderer text, including the zero-credit fallback.
         for (boolean dual : new boolean[]{false, true})
             renderCase(instrumentation, app, previews, 350, 180, 1f, dual, Credits.FUTURE,

@@ -24,6 +24,7 @@ public final class WidgetRenderer {
     private final float width, height;
     private final WidgetState state;
     private final boolean refreshing;
+    private float contentOffsetY;
     private final long now = System.currentTimeMillis() / 1000L;
     private final int ink, secondary, muted, track, accent;
 
@@ -126,9 +127,10 @@ public final class WidgetRenderer {
         float contentWidth = width - pad * 2;
         boolean small = smallDetail();
         float top = detailTop(small);
+        DetailMetrics layout = detailMetrics(top, small);
+        contentOffsetY = centeredDetailOffset(top, layout);
         if (width >= 220) sourceLabel("Codex 额度 · 每周剩余", pad, top, width - pad - 54, 18);
         else label(R.id.widget_label, "每周剩余", pad, top, width - pad - 54, 18, secondary);
-        DetailMetrics layout = detailMetrics(top, small);
         float valueTop = layout.valueTop;
         float valueHeight = layout.valueHeight;
         amount(R.id.widget_value, state.weeklyRemaining, pad, valueTop,
@@ -149,6 +151,7 @@ public final class WidgetRenderer {
         boolean small = smallDetail();
         float top = detailTop(small);
         DetailMetrics layout = detailMetrics(top, small);
+        contentOffsetY = centeredDetailOffset(top, layout);
         float valueTop = layout.valueTop;
         float valueHeight = layout.valueHeight;
         sourceLabel("Codex 额度 · 每周", pad, top, column, 18);
@@ -184,6 +187,16 @@ public final class WidgetRenderer {
 
     private float detailTop(boolean small) {
         return height > 200 ? 22 : showResetExpiry() && height < 134 ? 4 : small ? 10 : 16;
+    }
+
+    private float centeredDetailOffset(float top, DetailMetrics layout) {
+        float resetY = layout.valueTop + layout.valueHeight + layout.barGap
+                + layout.barHeight + layout.resetGap;
+        float lastBottom = separateDetailStatus() ? height - 9
+                : resetY + (showResetExpiry() ? 52 : 34);
+        // Translate the existing content as one group: equal outer padding with
+        // identical text sizes, progress bars, and spacing between every row.
+        return (height - lastBottom - top) / 2f;
     }
 
     private DetailMetrics detailMetrics(float top, boolean small) {
@@ -255,7 +268,8 @@ public final class WidgetRenderer {
         views.setViewLayoutWidth(id, Math.max(1, width), TypedValue.COMPLEX_UNIT_DIP);
         views.setViewLayoutHeight(id, Math.max(1, height), TypedValue.COMPLEX_UNIT_DIP);
         views.setViewLayoutMargin(id, RemoteViews.MARGIN_LEFT, x, TypedValue.COMPLEX_UNIT_DIP);
-        views.setViewLayoutMargin(id, RemoteViews.MARGIN_TOP, y, TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutMargin(id, RemoteViews.MARGIN_TOP,
+                y + (id == R.id.widget_refresh ? 0 : contentOffsetY), TypedValue.COMPLEX_UNIT_DIP);
     }
 
     private void label(int id, String value, float x, float y, float width, float height, int color) {
