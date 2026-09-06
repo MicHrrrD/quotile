@@ -22,6 +22,7 @@ import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.SizeF;
@@ -66,7 +67,7 @@ final class WidgetMotionTests {
         }
         for (Double amount : new Double[]{0d, .1d, 100d, null})
             assertFrames(instrumentation, app, previews, 350, 180, true, false, amount, amount);
-        assertAsyncInflationHandoff(instrumentation, app, previews);
+        assertWorkerInflationHandoff(instrumentation, app, previews);
         assertAttachedSpinner(instrumentation, app, previews);
         assertHostDelivery(instrumentation, app, previews);
     }
@@ -268,12 +269,12 @@ final class WidgetMotionTests {
      * thread. ProgressBar retains its construction thread and can defer drawable
      * levels even when getProgress() already reports the new value. Inspect and
      * draw the handoff inside the same UI task, before the queue can hide a gap. */
-    private static void assertAsyncInflationHandoff(Instrumentation instrumentation,
+    private static void assertWorkerInflationHandoff(Instrumentation instrumentation,
             Context app, File previews) throws Exception {
         Activity activity = instrumentation.startActivitySync(new Intent(app, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         ExecutorService inflater = Executors.newSingleThreadExecutor(runnable ->
-                new Thread(runnable, "Quotile async widget inflater"));
+                new Thread(runnable, "Quotile worker widget inflater"));
         int cases = 0;
         try {
             for (boolean dark : new boolean[]{false, true}) {
@@ -291,11 +292,11 @@ final class WidgetMotionTests {
                         legacy.setProgressBar(id, 10000, 0, false);
                         legacy.setColorStateList(id, "setProgressTintList", ColorStateList.valueOf(accent));
                     }
-                    asyncInflateAndAttach(instrumentation, activity, app, legacy,
+                    workerInflateAndAttach(instrumentation, activity, app, legacy,
                             inflater, width, height, card -> {
                                 for (int id : visibleBarIds(dual))
                                     require(fillLevel(card.findViewById(id)) == 0,
-                                            "Legacy async-inflated reveal starts with an empty drawable");
+                                            "Legacy worker-inflated reveal starts with an empty drawable");
                                 settled.reapply(app, card);
                                 layout(card, width, height);
                                 for (int id : visibleBarIds(dual)) {
@@ -311,16 +312,16 @@ final class WidgetMotionTests {
                                 if (saveEvidence) save(draw(card), previews, "flicker-legacy-immediate-light.png");
                             });
 
-                    // Start again with a fresh async-inflated hierarchy: the fix must
+                    // Start again with a fresh worker-inflated hierarchy: the fix must
                     // work without relying on a previous widget's cached drawable.
-                    ViewGroup card = asyncInflateAndAttach(instrumentation, activity, app,
+                    ViewGroup card = workerInflateAndAttach(instrumentation, activity, app,
                             WidgetRenderer.remoteViews(app, width, height, state, dark, false, true, true),
                             inflater, width, height, fresh -> {
                                 for (int id : visibleBarIds(dual)) {
                                     ProgressBar bar = fresh.findViewById(id);
                                     int target = id == R.id.widget_progress ? 7500 : 4200;
                                     require(bar.getProgress() == target && fillLevel(bar) == target,
-                                            "Fresh async reveal prewarms the actual drawable to its true quota");
+                                            "Fresh worker-inflated reveal prewarms the actual drawable to its true quota");
                                     require(Color.alpha(bar.getProgressTintList().getDefaultColor()) == 0,
                                             "Prewarmed quota stays invisible behind the advancing native overlay");
                                 }
@@ -376,7 +377,7 @@ final class WidgetMotionTests {
             }
             Bundle metrics = new Bundle();
             metrics.putString("stream", "FLICKER: " + cases
-                    + " real RemoteViews.applyAsync cases reproduce the old empty-drawable gap and verify"
+                    + " worker-inflated RemoteViews cases reproduce the old empty-drawable gap and verify"
                     + " an immediately filled handoff in the same UI task; light/dark compact, weekly and dual layouts;"
                     + " finished overlays remain filled during delayed final delivery.\n");
             instrumentation.sendStatus(0, metrics);
@@ -399,35 +400,44 @@ final class WidgetMotionTests {
         return fill.getLevel();
     }
 
-    private static ViewGroup asyncInflateAndAttach(Instrumentation instrumentation,
+    private static ViewGroup workerInflateAndAttach(Instrumentation instrumentation,
             Activity activity, Context app, RemoteViews views, ExecutorService inflater,
             int width, int height, java.util.function.Consumer<ViewGroup> immediateAssertions) throws Exception {
         CountDownLatch applied = new CountDownLatch(1);
         ViewGroup[] card = new ViewGroup[1];
         Throwable[] failure = new Throwable[1];
-        onMain(instrumentation, () -> views.applyAsync(app, new FrameLayout(activity), inflater,
-                new RemoteViews.OnViewAppliedListener() {
-                    @Override public void onViewApplied(View view) {
+        Handler main = new Handler(Looper.getMainLooper());
+        // Use the public apply API on a dedicated worker to model launcher
+        // construction off the UI thread, then perform attachment and reapply
+        // through the main Handler. No hidden Android framework APIs are used.
+        onMain(instrumentation, () -> inflater.execute(() -> {
+            try {
+                long constructionThread = Thread.currentThread().getId();
+                require(constructionThread != Looper.getMainLooper().getThread().getId(),
+                        "RemoteViews and its ProgressBars are actually constructed on a worker thread");
+                View view = views.apply(app, new FrameLayout(app));
+                main.post(() -> {
                         try {
-                            require(Looper.myLooper() == Looper.getMainLooper(),
-                                    "Async inflation hands the finished views back to the launcher UI thread");
+                            require(Looper.myLooper() == Looper.getMainLooper()
+                                            && Thread.currentThread().getId() != constructionThread,
+                                    "Worker-inflated views attach and reapply on a different, UI thread");
                             card[0] = (ViewGroup) view;
                             FrameLayout root = new FrameLayout(activity);
                             root.addView(view, new FrameLayout.LayoutParams(dp(app, width), dp(app, height)));
                             activity.setContentView(root);
                             layout(view, width, height);
-                            require(view.isAttachedToWindow(), "Async widget attaches to a real activity window");
+                            require(view.isAttachedToWindow(), "Worker-inflated widget attaches to a real activity window");
                             immediateAssertions.accept(card[0]);
                         } catch (Throwable error) { failure[0] = error; }
                         finally { applied.countDown(); }
-                    }
-                    @Override public void onError(Exception error) {
-                        failure[0] = error;
-                        applied.countDown();
-                    }
-                }));
-        require(applied.await(5, TimeUnit.SECONDS), "Async widget inflation completes promptly");
-        if (failure[0] != null) throw new AssertionError("Async widget handoff: " + failure[0].getMessage(), failure[0]);
+                });
+            } catch (Throwable error) {
+                failure[0] = error;
+                applied.countDown();
+            }
+        }));
+        require(applied.await(5, TimeUnit.SECONDS), "Worker widget inflation completes promptly");
+        if (failure[0] != null) throw new AssertionError("Worker widget handoff: " + failure[0].getMessage(), failure[0]);
         return card[0];
     }
 
