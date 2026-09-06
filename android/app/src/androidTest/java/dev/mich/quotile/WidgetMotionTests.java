@@ -107,6 +107,12 @@ final class WidgetMotionTests {
             Bitmap settled = draw(card);
             require(original.sameAs(settled), "Native reveal settles into the original pixel-identical widget");
             original.recycle(); settled.recycle();
+            WidgetRenderer.remoteViews(app, width, height, state, dark, false, false, true)
+                    .reapply(app, card);
+            require(card.findViewById(R.id.widget_reveal).getVisibility() == View.GONE
+                            && card.findViewById(R.id.widget_secondary_reveal).getVisibility() == View.GONE
+                            && primary.getProgress() == expected(weekly),
+                    "Reduced motion keeps the accurate static bars without a reveal overlay");
             if (weekly != null && weekly == 75d) {
                 assertCapsulePixels(primary, dark);
                 if (dual) assertCapsulePixels(second, dark);
