@@ -336,6 +336,11 @@ final class WidgetMotionTests {
         });
         Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
         require(screen != null, "Capture actual Android animation frames");
+        require(position[0] >= 0 && position[1] >= 0 && position[2] > 0 && position[3] > 0
+                        && position[0] + position[2] <= screen.getWidth()
+                        && position[1] + position[3] <= screen.getHeight(),
+                "Emulator viewport must contain the native card [card=" + Arrays.toString(position)
+                        + ", screen=" + screen.getWidth() + "x" + screen.getHeight() + "]");
         Bitmap card = Bitmap.createBitmap(screen, position[0], position[1], position[2], position[3]);
         if (card != screen) screen.recycle();
         return card;

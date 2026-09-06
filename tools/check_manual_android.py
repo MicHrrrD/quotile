@@ -1,5 +1,6 @@
 """Run the installed app's offline Android instrumentation; assert its actual result."""
 from pathlib import Path
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,12 +18,22 @@ run(['adb','install','-r',str(ROOT/'android/app/build/outputs/apk/androidTest/de
 # The disposable emulator hosts its own widget to exercise AppWidgetService's real
 # sized-RemoteViews delivery. Restore both grants/settings afterwards.
 animation_scale = run(['adb','shell','settings','get','global','animator_duration_scale']).strip()
+display_size = run(['adb','shell','wm','size'])
+display_density = run(['adb','shell','wm','density'])
+size_override = re.search(r'^Override size:\s*(\d+x\d+)\s*$', display_size, re.MULTILINE)
+density_override = re.search(r'^Override density:\s*(\d+)\s*$', display_density, re.MULTILINE)
 run(['adb','shell','appwidget','grantbind','--package','dev.mich.quotile','--user','0'])
 try:
+    # Hardware screenshots must contain the entire 350dp card. The emulator's
+    # unspecified default profile can be narrower, unlike the target Fold screen.
+    run(['adb','shell','wm','size','1080x2400'])
+    run(['adb','shell','wm','density','320'])
     run(['adb','shell','settings','put','global','animator_duration_scale','1'])
     # Raw mode preserves INSTRUMENTATION_CODE even when the runner returns a stream.
     output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
 finally:
+    run(['adb','shell','wm','size',size_override.group(1) if size_override else 'reset'])
+    run(['adb','shell','wm','density',density_override.group(1) if density_override else 'reset'])
     run(['adb','shell','appwidget','revokebind','--package','dev.mich.quotile','--user','0'])
     if animation_scale == 'null':
         run(['adb','shell','settings','delete','global','animator_duration_scale'])
