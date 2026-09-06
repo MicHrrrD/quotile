@@ -4,7 +4,7 @@
 
 A small, native Android home-screen widget for Codex quota. On-device sign-in, one-tap refresh, and optional scheduled updates.
 
-[下载 APK · 0.3.6](downloads/Quotile-0.3.6.apk?raw=true) · [完整下载包](downloads/Quotile-0.3.6.zip?raw=true) · [使用指南](docs/USAGE.md) · [隐私说明](PRIVACY.md) · [开发与构建](docs/DEVELOPMENT.md)
+[下载 APK · 0.3.7](downloads/Quotile-0.3.7.apk?raw=true) · [完整下载包](downloads/Quotile-0.3.7.zip?raw=true) · [使用指南](docs/USAGE.md) · [隐私说明](PRIVACY.md) · [开发与构建](docs/DEVELOPMENT.md)
 
 Quotile = **Quota + Tile**，中文名「余量」。项目从 Galaxy Z Fold7 的桌面需求出发，重点适配 **1×5、2×5** 及内外屏缩放；支持 Android 12 及以上。登录、存储和额度读取都在手机上完成，无需电脑、服务器、Termux 或 API Key。
 
@@ -12,7 +12,7 @@ Quotile = **Quota + Tile**，中文名「余量」。项目从 Galaxy Z Fold7 �
 
 ## 看看它的样子
 
-以下为 **0.3.6 原生 Android 控件渲染图，使用合成示例数据**，不代表真实账户额度。实际占格和文字大小取决于启动器、桌面网格与系统缩放。
+以下为 **0.3.6 原生 Android 控件的静态布局图，使用合成示例数据**，不代表真实账户额度。0.3.7 保留这套布局，新增刷新动效；静态图片不展示动画。实际占格和文字大小取决于启动器、桌面网格与系统缩放。
 
 ### 1×5 · 紧凑卡片
 
@@ -34,6 +34,7 @@ Quotile = **Quota + Tile**，中文名「余量」。项目从 Galaxy Z Fold7 �
 | 查看可用重置次数 | 两行及以上卡片在重置时间下方显示「可用重置 N 次」。这是账户共用的次数，只展示，不执行重置。 |
 | 查看重置机会到期时间 | 可用次数大于 0 时，在次数下方显示「最近到期 M/d HH:mm」；次数为 0 或未知时隐藏这一行。无法确认日期时显示「到期时间未提供」。 |
 | 在桌面直接刷新 | 点右侧刷新按钮，在当前桌面完成读取和更新，不打开应用窗口；点卡片其余区域可进入设置。 |
+| 刷新动效 | 读取时刷新箭头转动；成功后，横向胶囊余量条由左向右平滑展开。读取失败保留旧数据；系统关闭动画时直接显示结果。 |
 | 自己决定刷新频率 | 默认只手动刷新。可开启约每 15／30／60 分钟自动刷新，并随时关闭。 |
 | 调整大小与外观 | 支持横向、纵向缩放；浅色、深色、跟随系统三种外观。原生文字、进度条与矢量图标保持清晰。 |
 | 手机本地登录 | 支持设备码及浏览器 OAuth 登录，凭据通过 Android Keystore 加密保存在本机。 |
@@ -44,13 +45,13 @@ Quotile = **Quota + Tile**，中文名「余量」。项目从 Galaxy Z Fold7 �
 
 ## 安装与快速开始
 
-1. 在 Android 12 及以上手机上[下载 Quotile-0.3.6.apk](downloads/Quotile-0.3.6.apk?raw=true)，按系统提示安装，打开「余量」。
+1. 在 Android 12 及以上手机上[下载 Quotile-0.3.7.apk](downloads/Quotile-0.3.7.apk?raw=true)，按系统提示安装，打开「余量」。
 2. 首次登录建议使用 **「设备码登录 · 网页卡住时使用」**，按照提示在 OpenAI 官方页面完成授权，再返回应用。若账户未开放设备码登录，可使用「登录 ChatGPT」的浏览器方式。详见[登录步骤](docs/USAGE.md#首次登录)。
 3. 点击 **「刷新额度」**，读取第一份数据。登录成功和打开应用本身都不会主动查询额度。
 4. 点击 **「添加 1 × 5」或「添加 2 × 5」**，确认放到桌面；长按小组件，拖动边缘调整大小。
 5. 以后点击小组件右侧的刷新按钮即可。需要定时更新时，再到设置中开启「自动刷新」。
 
-当前为社区预览版本。下载链接提供的是沿用固定签名的交付 APK；[完整下载包](downloads/Quotile-0.3.6.zip?raw=true) 同时包含许可和第三方说明。从本项目同签名的 0.3.0–0.3.5 可直接覆盖升级；0.2.0 需要先卸载再安装。**GitHub Actions 中的调试 APK 使用不同签名，请不要与交付 APK 混装。** [升级说明与校验值](docs/USAGE.md#安装与升级)
+当前为社区预览版本。下载链接提供的是沿用固定签名的交付 APK；[完整下载包](downloads/Quotile-0.3.7.zip?raw=true) 同时包含许可和第三方说明。从本项目同签名的 0.3.0–0.3.6 可直接覆盖升级；0.2.0 需要先卸载再安装。**GitHub Actions 中的调试 APK 使用不同签名，请不要与交付 APK 混装。** [升级说明与校验值](docs/USAGE.md#安装与升级)
 
 ## 数据与兼容范围
 
@@ -68,7 +69,7 @@ Quotile = **Quota + Tile**，中文名「余量」。项目从 Galaxy Z Fold7 �
 
 主要代码位于 [`android/`](android/)，构建和校验脚本位于 [`tools/`](tools/)。环境为 JDK 17、Gradle 8.11.1、AGP 8.10.1、Android SDK 36；完整步骤见[开发文档](docs/DEVELOPMENT.md)。
 
-[0.3.6 的 GitHub Actions 构建与 Android 16 检查已通过](https://github.com/MicHrrrD/quotile/actions/runs/33980902708)，覆盖额度、次数与到期明细解析、本地快照、辅助失败和取消、手动刷新、自动任务控制，以及多尺寸、主题和字体缩放下的原生布局。测试使用合成数据；可选字段是否对某个真实账户开放，以该账户刷新结果为准。详细记录见 [`VALIDATION.md`](VALIDATION.md)。
+[0.3.7 的 GitHub Actions 构建与 Android 16 检查](https://github.com/MicHrrrD/quotile/actions/runs/34007861485)已通过，覆盖额度、次数与到期明细解析、本地快照、辅助失败和取消、手动刷新、自动任务控制，以及多尺寸、主题和字体缩放下的原生布局；新增刷新动画、结束和取消，以及关闭系统动画时的静态行为检查。测试使用合成数据；可选字段是否对某个真实账户开放，以该账户刷新结果为准。详细记录见 [`VALIDATION.md`](VALIDATION.md)。
 
 欢迎通过 [Issues](https://github.com/MicHrrrD/quotile/issues) 反馈问题或建议。请附上机型、Android／One UI 版本、应用版本和复现步骤；截图前遮住账号信息，**不要提交验证码、令牌、Cookie 或签名私钥**。
 
