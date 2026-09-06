@@ -11,6 +11,7 @@ import android.appwidget.AppWidgetProviderInfo;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -18,7 +19,10 @@ import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Animatable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 import android.os.Bundle;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.SizeF;
 import android.view.View;
@@ -40,11 +44,14 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Real host delivery and native pixel checks; all quota values are synthetic. */
 final class WidgetMotionTests {
+    private static final long REVEAL_DURATION_MS = 900;
     private static final int[] TEXT_IDS = { R.id.widget_label, R.id.widget_value,
             R.id.widget_reset, R.id.widget_reset_count, R.id.widget_reset_expiry,
             R.id.widget_secondary_label, R.id.widget_secondary_value,
@@ -59,6 +66,7 @@ final class WidgetMotionTests {
         }
         for (Double amount : new Double[]{0d, .1d, 100d, null})
             assertFrames(instrumentation, app, previews, 350, 180, true, false, amount, amount);
+        assertAsyncInflationHandoff(instrumentation, app, previews);
         assertAttachedSpinner(instrumentation, app, previews);
         assertHostDelivery(instrumentation, app, previews);
     }
@@ -128,7 +136,10 @@ final class WidgetMotionTests {
         require((overlay.getVisibility() == View.VISIBLE) == eligible,
                 "Zero, unknown and tiny quotas use the unchanged native static capsule");
         if (!eligible) return;
-        require(bar.getProgress() == 0, "Native reveal overlays the empty original track");
+        require(bar.getProgress() == expected(amount)
+                        && bar.getProgressTintList() != null
+                        && Color.alpha(bar.getProgressTintList().getDefaultColor()) == 0,
+                "Native reveal preloads the true quota level behind a transparent fill");
         require(overlay.getLeft() == bar.getLeft() && overlay.getTop() == bar.getTop()
                         && overlay.getWidth() == target && overlay.getHeight() == bar.getHeight(),
                 "Native reveal target exactly matches the original ScaleDrawable fill geometry");
@@ -141,16 +152,53 @@ final class WidgetMotionTests {
                         && capFill.getWidth() == diameter && capFill.getHeight() == diameter,
                 "Both end caps keep the original bar's circular diameter");
         require(!overlay.isClickable() && !overlay.isFocusable(), "Reveal layers never consume widget taps");
+        assertNativeAppearance(overlay);
         assertNativeTimesteps(body.getCurrentView(), body, false);
         assertNativeTimesteps(capFill, cap, true);
+    }
+
+    private static void assertNativeAppearance(ViewGroup overlay) {
+        require(overlay instanceof ViewFlipper && ((ViewFlipper) overlay).getDisplayedChild() == 1,
+                "The whole capsule shares one finite native appearance animation");
+        View fill = ((ViewFlipper) overlay).getCurrentView();
+        Animation original = fill.getAnimation();
+        require(original != null && original.getDuration() == 160 && original.getRepeatCount() == 0,
+                "Capsule appearance fades once over 160 ms without looping");
+        Animation animation = AnimationUtils.loadAnimation(fill.getContext(), R.anim.widget_reveal_appear);
+        animation.initialize(fill.getWidth(), fill.getHeight(), overlay.getWidth(), overlay.getHeight());
+        animation.setStartTime(1000);
+        Transformation transformation = new Transformation();
+        for (int elapsed : new int[]{0, 80, 160, 980, 1180}) {
+            transformation.clear();
+            animation.getTransformation(1000 + elapsed, transformation);
+            float alpha = transformation.getAlpha();
+            if (elapsed == 0) require(alpha == 0f,
+                    "The first native frame starts fully transparent, without a suddenly appearing cap");
+            else if (elapsed < 160) require(alpha > 0f && alpha < 1f,
+                    "The whole capsule becomes visible gradually during startup");
+            else require(Math.abs(alpha - 1f) < .00001f,
+                    "Finished appearance remains fully visible until and after the final host handoff");
+            require(transformation.getMatrix().isIdentity(),
+                    "Appearance changes opacity without scaling or moving the capsule");
+        }
     }
 
     /** Exercise the host's continuous native interpolation at 60 and 120 Hz timestamps.
      * This checks frame-rate independence, not a claim about cloud emulator throughput. */
     private static void assertNativeTimesteps(View fill, ViewGroup parent, boolean cap) {
         Animation original = fill.getAnimation();
-        require(original != null && original.getDuration() == 720,
-                "Displayed reveal child owns a finite 720 ms native animation");
+        require(original != null && original.getDuration() == REVEAL_DURATION_MS,
+                "Displayed reveal child owns a finite 900 ms native animation");
+        if (!cap) {
+            float first = bodyScaleAt(fill, parent, .1f);
+            float second = bodyScaleAt(fill, parent, .2f);
+            float middle = bodyScaleAt(fill, parent, .5f);
+            require(first > 0f && first <= .05f && second > first && second <= .15f,
+                    "The first 10% and 20% of reveal time visibly ease in instead of rushing forward ["
+                            + first + ", " + second + "]");
+            require(middle >= .4f && middle <= .6f && middle > second,
+                    "Gentle startup still advances to the middle of the capsule halfway through");
+        }
         for (int refreshRate : new int[]{60, 120}) {
             Animation animation = AnimationUtils.loadAnimation(fill.getContext(),
                     cap ? R.anim.widget_reveal_cap : R.anim.widget_reveal_body);
@@ -161,10 +209,10 @@ final class WidgetMotionTests {
             float[] matrix = new float[9];
             int distinct = 0;
             float previous = -Float.MAX_VALUE;
-            int samples = (int) Math.ceil(720d * refreshRate / 1000d);
+            int samples = (int) Math.ceil(REVEAL_DURATION_MS * refreshRate / 1000d);
             for (int frame = 0; frame <= samples; frame++) {
                 transform.clear();
-                long time = 1000 + Math.min(720, Math.round(frame * 1000d / refreshRate));
+                long time = 1000 + Math.min(REVEAL_DURATION_MS, Math.round(frame * 1000d / refreshRate));
                 animation.getTransformation(time, transform);
                 transform.getMatrix().getValues(matrix);
                 float position = matrix[cap ? Matrix.MTRANS_X : Matrix.MSCALE_X];
@@ -180,6 +228,17 @@ final class WidgetMotionTests {
                     "Native animation supplies distinct positions at " + refreshRate + " Hz, without a low-rate step table");
             require(Math.abs(previous - (cap ? 0f : 1f)) < .00001f, "Native animation finishes at the exact original capsule");
         }
+    }
+
+    private static float bodyScaleAt(View fill, ViewGroup parent, float elapsedFraction) {
+        Animation animation = AnimationUtils.loadAnimation(fill.getContext(), R.anim.widget_reveal_body);
+        animation.initialize(fill.getWidth(), fill.getHeight(), parent.getWidth(), parent.getHeight());
+        animation.setStartTime(1000);
+        Transformation transformation = new Transformation();
+        animation.getTransformation(1000 + Math.round(REVEAL_DURATION_MS * elapsedFraction), transformation);
+        float[] matrix = new float[9];
+        transformation.getMatrix().getValues(matrix);
+        return matrix[Matrix.MSCALE_X];
     }
 
     private static void assertCapsulePixels(ProgressBar bar, boolean dark) {
@@ -203,6 +262,173 @@ final class WidgetMotionTests {
 
     private static boolean isFill(int color, boolean dark) {
         return Color.alpha(color) > 200 && (dark ? Color.red(color) > 200 : Color.red(color) < 80);
+    }
+
+    /** A launcher may inflate RemoteViews on a worker, then reapply them on the UI
+     * thread. ProgressBar retains its construction thread and can defer drawable
+     * levels even when getProgress() already reports the new value. Inspect and
+     * draw the handoff inside the same UI task, before the queue can hide a gap. */
+    private static void assertAsyncInflationHandoff(Instrumentation instrumentation,
+            Context app, File previews) throws Exception {
+        Activity activity = instrumentation.startActivitySync(new Intent(app, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        ExecutorService inflater = Executors.newSingleThreadExecutor(runnable ->
+                new Thread(runnable, "Quotile async widget inflater"));
+        int cases = 0;
+        try {
+            for (boolean dark : new boolean[]{false, true}) {
+                for (int[] size : new int[][]{{350, 64, 0}, {250, 235, 0}, {350, 180, 1}}) {
+                    int width = size[0], height = size[1];
+                    boolean dual = size[2] != 0, saveEvidence = !dark && height == 64;
+                    WidgetState state = state(75d, dual ? 42d : null);
+                    RemoteViews settled = WidgetRenderer.remoteViews(app, width, height,
+                            state, dark, false, true, false);
+                    RemoteViews legacy = WidgetRenderer.remoteViews(app, width, height,
+                            state, dark, false, true, true);
+                    // Reproduce the previous release's exact empty-underlay policy.
+                    int accent = Color.parseColor(dark ? "#ECECEC" : "#282828");
+                    for (int id : visibleBarIds(dual)) {
+                        legacy.setProgressBar(id, 10000, 0, false);
+                        legacy.setColorStateList(id, "setProgressTintList", ColorStateList.valueOf(accent));
+                    }
+                    asyncInflateAndAttach(instrumentation, activity, app, legacy,
+                            inflater, width, height, card -> {
+                                for (int id : visibleBarIds(dual))
+                                    require(fillLevel(card.findViewById(id)) == 0,
+                                            "Legacy async-inflated reveal starts with an empty drawable");
+                                settled.reapply(app, card);
+                                layout(card, width, height);
+                                for (int id : visibleBarIds(dual)) {
+                                    ProgressBar bar = card.findViewById(id);
+                                    int target = id == R.id.widget_progress ? 7500 : 4200;
+                                    require(bar.getProgress() == target && fillLevel(bar) == 0,
+                                            "Control reproduces deferred drawable level despite updated logical quota");
+                                    Bitmap gap = draw(bar);
+                                    require(fillEdge(gap, new Rect(0, 0, gap.getWidth(), gap.getHeight()), dark) == -1,
+                                            "Legacy handoff really draws an empty capsule before its queued level update");
+                                    gap.recycle();
+                                }
+                                if (saveEvidence) save(draw(card), previews, "flicker-legacy-immediate-light.png");
+                            });
+
+                    // Start again with a fresh async-inflated hierarchy: the fix must
+                    // work without relying on a previous widget's cached drawable.
+                    ViewGroup card = asyncInflateAndAttach(instrumentation, activity, app,
+                            WidgetRenderer.remoteViews(app, width, height, state, dark, false, true, true),
+                            inflater, width, height, fresh -> {
+                                for (int id : visibleBarIds(dual)) {
+                                    ProgressBar bar = fresh.findViewById(id);
+                                    int target = id == R.id.widget_progress ? 7500 : 4200;
+                                    require(bar.getProgress() == target && fillLevel(bar) == target,
+                                            "Fresh async reveal prewarms the actual drawable to its true quota");
+                                    require(Color.alpha(bar.getProgressTintList().getDefaultColor()) == 0,
+                                            "Prewarmed quota stays invisible behind the advancing native overlay");
+                                }
+                            });
+                    // The native animation must keep its final fill even if the
+                    // launcher's final RemoteViews delivery arrives after 900 ms.
+                    SystemClock.sleep(1100);
+                    int[] heldEdges = new int[visibleBarIds(dual).length];
+                    onMain(instrumentation, () -> {
+                        Bitmap held = draw(card);
+                        int index = 0;
+                        for (int id : visibleBarIds(dual)) {
+                            ProgressBar bar = card.findViewById(id);
+                            heldEdges[index++] = assertCapsuleFrame(held, boundsIn(card, bar), dark);
+                        }
+                        if (saveEvidence) save(held, previews, "flicker-reveal-held-light.png");
+                        else held.recycle();
+                    });
+                    SystemClock.sleep(80);
+                    onMain(instrumentation, () -> {
+                        Bitmap before = draw(card);
+                        int index = 0;
+                        for (int id : visibleBarIds(dual)) {
+                            ProgressBar bar = card.findViewById(id);
+                            require(assertCapsuleFrame(before, boundsIn(card, bar), dark) == heldEdges[index++],
+                                    "Finished overlay remains filled while final host delivery is delayed");
+                        }
+                        before.recycle();
+                        // No waitForIdle, sleep, posted callback or next frame may
+                        // intervene between this reapply and the pixel assertion.
+                        settled.reapply(app, card);
+                        layout(card, width, height);
+                        Bitmap immediate = draw(card);
+                        index = 0;
+                        for (int id : visibleBarIds(dual)) {
+                            ProgressBar bar = card.findViewById(id);
+                            int target = id == R.id.widget_progress ? 7500 : 4200;
+                            require(bar.getProgress() == target && fillLevel(bar) == target,
+                                    "Settling retains the prewarmed drawable immediately, without queued zero-to-quota work");
+                            require(Color.alpha(bar.getProgressTintList().getDefaultColor()) == 255,
+                                    "Settling restores the original opaque capsule tint");
+                            require(assertCapsuleFrame(immediate, boundsIn(card, bar), dark) == heldEdges[index++],
+                                    "Immediate settled pixels preserve the filled extent and both round caps");
+                        }
+                        require(card.findViewById(R.id.widget_reveal).getVisibility() == View.GONE
+                                        && card.findViewById(R.id.widget_secondary_reveal).getVisibility() == View.GONE,
+                                "Immediate handoff removes the overlay only while a complete native capsule is ready");
+                        if (saveEvidence) save(immediate, previews, "flicker-settled-immediate-light.png");
+                        else immediate.recycle();
+                    });
+                    cases++;
+                }
+            }
+            Bundle metrics = new Bundle();
+            metrics.putString("stream", "FLICKER: " + cases
+                    + " real RemoteViews.applyAsync cases reproduce the old empty-drawable gap and verify"
+                    + " an immediately filled handoff in the same UI task; light/dark compact, weekly and dual layouts;"
+                    + " finished overlays remain filled during delayed final delivery.\n");
+            instrumentation.sendStatus(0, metrics);
+        } finally {
+            inflater.shutdownNow();
+            onMain(instrumentation, activity::finish);
+        }
+    }
+
+    private static int[] visibleBarIds(boolean dual) {
+        return dual ? new int[]{R.id.widget_progress, R.id.widget_secondary_progress}
+                : new int[]{R.id.widget_progress};
+    }
+
+    private static int fillLevel(ProgressBar bar) {
+        require(bar.getProgressDrawable() instanceof LayerDrawable,
+                "Native quota bar uses its original layered drawable");
+        Drawable fill = ((LayerDrawable) bar.getProgressDrawable()).findDrawableByLayerId(android.R.id.progress);
+        require(fill != null, "Native quota drawable exposes its progress layer");
+        return fill.getLevel();
+    }
+
+    private static ViewGroup asyncInflateAndAttach(Instrumentation instrumentation,
+            Activity activity, Context app, RemoteViews views, ExecutorService inflater,
+            int width, int height, java.util.function.Consumer<ViewGroup> immediateAssertions) throws Exception {
+        CountDownLatch applied = new CountDownLatch(1);
+        ViewGroup[] card = new ViewGroup[1];
+        Throwable[] failure = new Throwable[1];
+        onMain(instrumentation, () -> views.applyAsync(app, new FrameLayout(activity), inflater,
+                new RemoteViews.OnViewAppliedListener() {
+                    @Override public void onViewApplied(View view) {
+                        try {
+                            require(Looper.myLooper() == Looper.getMainLooper(),
+                                    "Async inflation hands the finished views back to the launcher UI thread");
+                            card[0] = (ViewGroup) view;
+                            FrameLayout root = new FrameLayout(activity);
+                            root.addView(view, new FrameLayout.LayoutParams(dp(app, width), dp(app, height)));
+                            activity.setContentView(root);
+                            layout(view, width, height);
+                            require(view.isAttachedToWindow(), "Async widget attaches to a real activity window");
+                            immediateAssertions.accept(card[0]);
+                        } catch (Throwable error) { failure[0] = error; }
+                        finally { applied.countDown(); }
+                    }
+                    @Override public void onError(Exception error) {
+                        failure[0] = error;
+                        applied.countDown();
+                    }
+                }));
+        require(applied.await(5, TimeUnit.SECONDS), "Async widget inflation completes promptly");
+        if (failure[0] != null) throw new AssertionError("Async widget handoff: " + failure[0].getMessage(), failure[0]);
+        return card[0];
     }
 
     private static void assertAttachedSpinner(Instrumentation instrumentation, Context app, File previews)
@@ -340,7 +566,9 @@ final class WidgetMotionTests {
             });
             require(card[0].revealDelivered.await(2, TimeUnit.SECONDS),
                     "Actual AppWidgetService must deliver the native reveal layout");
-            SystemClock.sleep(30);
+            // Wait for the 160 ms appearance fade; subsequent captures measure
+            // motion while the entire capsule is opaque and still expanding.
+            SystemClock.sleep(200);
             Bitmap early = screenshot(instrumentation, card[0]);
             SystemClock.sleep(120);
             Bitmap later = screenshot(instrumentation, card[0]);
@@ -362,9 +590,9 @@ final class WidgetMotionTests {
                 require(card[0].frames.size() == 2,
                         "AppWidgetService receives only reveal start and final data, never per-frame IPC [updates="
                                 + card[0].frames.size() + "]");
-                require(card[0].frames.get(0)[0] == 0 && card[0].frames.get(0)[1] == 0
-                                && card[0].frames.get(1)[0] == 6800 && card[0].frames.get(1)[1] == 8400,
-                        "Host receives the original empty tracks followed by precise saved quota values");
+                require(Arrays.equals(card[0].frames.get(0), new int[]{6800, 8400, 0, 0})
+                                && Arrays.equals(card[0].frames.get(1), new int[]{6800, 8400, 255, 255}),
+                        "Host receives prewarmed transparent fills followed by the same precise opaque quotas");
                 ProgressBar second = card[0].findViewById(R.id.widget_secondary_progress);
                 require(second != null && second.getProgress() == 8400, "Final dual quota is accurate in the host");
                 require(!WidgetMotion.isRunning() && callbacks.get() == 1,
@@ -390,7 +618,7 @@ final class WidgetMotionTests {
             });
             SystemClock.sleep(100);
             onMain(instrumentation, WidgetMotion::cancel);
-            SystemClock.sleep(850);
+            SystemClock.sleep(1050);
             onMain(instrumentation, () -> {
                 require(!WidgetMotion.isRunning() && cancelledCallbacks.get() == 1,
                         "Cancellation settles once and leaves no reveal loop running");
@@ -428,11 +656,14 @@ final class WidgetMotionTests {
             ProgressBar first = findViewById(R.id.widget_progress);
             ProgressBar second = findViewById(R.id.widget_secondary_progress);
             if (recording && first != null && second != null) {
-                frames.add(new int[]{first.getProgress(), second.getProgress()});
+                frames.add(new int[]{first.getProgress(), second.getProgress(),
+                        Color.alpha(first.getProgressTintList().getDefaultColor()),
+                        Color.alpha(second.getProgressTintList().getDefaultColor())});
                 View reveal = findViewById(R.id.widget_reveal);
                 if (revealDelivered != null && reveal != null && reveal.getVisibility() == View.VISIBLE)
                     revealDelivered.countDown();
-                if (settledDelivered != null && first.getProgress() == 6800 && second.getProgress() == 8400)
+                if (settledDelivered != null && reveal != null && reveal.getVisibility() == View.GONE
+                        && first.getProgress() == 6800 && second.getProgress() == 8400)
                     settledDelivered.countDown();
             }
         }
@@ -461,15 +692,20 @@ final class WidgetMotionTests {
         return area;
     }
     private static int assertCapsuleFrame(Bitmap bitmap, Rect bar, boolean dark) {
-        int edge = -1, middle = bar.top + bar.height() / 2;
-        for (int x = bar.left; x < bar.right; x++)
-            if (isFill(bitmap.getPixel(x, middle), dark)) edge = x;
+        int edge = fillEdge(bitmap, bar, dark), middle = bar.top + bar.height() / 2;
         require(edge > bar.left + 2, "Actual native reveal frame contains a visible capsule");
         int inset = Math.max(1, bar.height() / 8), top = bar.top + Math.max(0, bar.height() / 10);
         require(isFill(bitmap.getPixel(edge - inset, middle), dark)
                         && !isFill(bitmap.getPixel(edge - inset, top), dark)
                         && !isFill(bitmap.getPixel(bar.left + inset, top), dark),
                 "Actual moving fill retains both circular caps instead of a vertical clipped edge");
+        return edge;
+    }
+
+    private static int fillEdge(Bitmap bitmap, Rect bar, boolean dark) {
+        int edge = -1, middle = bar.top + bar.height() / 2;
+        for (int x = bar.left; x < bar.right; x++)
+            if (isFill(bitmap.getPixel(x, middle), dark)) edge = x;
         return edge;
     }
 

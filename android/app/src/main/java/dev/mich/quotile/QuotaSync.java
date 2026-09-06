@@ -137,7 +137,7 @@ public final class QuotaSync {
                     // Failures, cancelled reads and replaced accounts always settle directly.
                     if (operation.readSucceeded && !operation.cancelled.get()
                             && store.generation() == generation && !isRunning()
-                            && SystemClock.elapsedRealtime() < operation.deadline - 1000L) {
+                            && SystemClock.elapsedRealtime() < operation.deadline - 1200L) {
                         try { WidgetMotion.reveal(app, generation, deliverCallback); }
                         catch (RuntimeException unavailableHost) {
                             try { updateWidgets(app); }

@@ -62,7 +62,8 @@ public final class WidgetRenderer {
             views.setViewVisibility(id, View.GONE);
         // Selecting the empty child clears a prior fill animation on host reapply.
         // These flippers never auto-start or repeat; idle overlays remain GONE.
-        for (int id : new int[]{R.id.widget_reveal_body, R.id.widget_reveal_cap,
+        for (int id : new int[]{R.id.widget_reveal, R.id.widget_secondary_reveal,
+                R.id.widget_reveal_body, R.id.widget_reveal_cap,
                 R.id.widget_secondary_reveal_body, R.id.widget_secondary_reveal_cap})
             views.setDisplayedChild(id, 0);
         if (!state.configured) unconfigured();
@@ -352,8 +353,13 @@ public final class WidgetRenderer {
         // Match ScaleDrawable's physical-pixel rounding, avoiding a final 1px jump.
         int fillPx = widthPx - (int) (widthPx * (10000 - progress) / 10000f);
         boolean animate = reveal && progress > 0 && fillPx > heightPx;
-        views.setProgressBar(id, 10000, animate ? 0 : progress, false);
-        views.setColorStateList(id, "setProgressTintList", ColorStateList.valueOf(accent));
+        // A launcher can inflate ProgressBar on a worker thread. Later UI-thread
+        // setProgress calls may post the drawable-level change to the next frame.
+        // Prepare the real level underneath the reveal, then only restore its tint
+        // at handoff: removing the overlay can never expose an empty 0% drawable.
+        views.setProgressBar(id, 10000, progress, false);
+        views.setColorStateList(id, "setProgressTintList",
+                ColorStateList.valueOf(animate ? Color.TRANSPARENT : accent));
         views.setColorStateList(id, "setProgressBackgroundTintList", ColorStateList.valueOf(track));
         if (animate) revealBar(id == R.id.widget_secondary_progress, x, y, fillPx, heightPx);
     }
@@ -381,6 +387,8 @@ public final class WidgetRenderer {
         views.setInt(bodyFill, "setBackgroundColor", accent);
         views.setDisplayedChild(body, 1);
         views.setDisplayedChild(cap, 1);
+        // Fade the complete capsule together so its initial dot appears gently.
+        views.setDisplayedChild(overlay, 1);
     }
 
     private void sizePx(int id, int width, int height) {

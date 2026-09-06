@@ -82,42 +82,52 @@
         android:progressDrawable="@drawable/widget_progress" android:importantForAccessibility="no" />
     <!-- Finite, host-side animations: no recurring widget updates or image frames.
          Circles retain their radius while the middle stretches between them. -->
-    <FrameLayout android:id="@+id/widget_reveal" android:layout_width="1dp" android:layout_height="1dp"
-        android:visibility="gone" android:importantForAccessibility="noHideDescendants">
-        <ImageView android:id="@+id/widget_reveal_left" android:layout_width="1dp" android:layout_height="1dp"
-            android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
-        <ViewFlipper android:id="@+id/widget_reveal_body" android:layout_width="1dp" android:layout_height="1dp"
-            android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_body">
-            <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
-            <ImageView android:id="@+id/widget_reveal_body_fill"
-                android:layout_width="match_parent" android:layout_height="match_parent" android:background="#282828" />
-        </ViewFlipper>
-        <ViewFlipper android:id="@+id/widget_reveal_cap" android:layout_width="1dp" android:layout_height="1dp"
-            android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_cap">
-            <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
-            <ImageView android:id="@+id/widget_reveal_cap_fill"
-                android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="right|top"
+    <ViewFlipper android:id="@+id/widget_reveal" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:importantForAccessibility="noHideDescendants"
+        android:autoStart="false" android:animateFirstView="true"
+        android:inAnimation="@anim/widget_reveal_appear">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+            <ImageView android:id="@+id/widget_reveal_left" android:layout_width="1dp" android:layout_height="1dp"
                 android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
-        </ViewFlipper>
-    </FrameLayout>
-    <FrameLayout android:id="@+id/widget_secondary_reveal" android:layout_width="1dp" android:layout_height="1dp"
-        android:visibility="gone" android:importantForAccessibility="noHideDescendants">
-        <ImageView android:id="@+id/widget_secondary_reveal_left" android:layout_width="1dp" android:layout_height="1dp"
-            android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
-        <ViewFlipper android:id="@+id/widget_secondary_reveal_body" android:layout_width="1dp" android:layout_height="1dp"
-            android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_body">
-            <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
-            <ImageView android:id="@+id/widget_secondary_reveal_body_fill"
-                android:layout_width="match_parent" android:layout_height="match_parent" android:background="#282828" />
-        </ViewFlipper>
-        <ViewFlipper android:id="@+id/widget_secondary_reveal_cap" android:layout_width="1dp" android:layout_height="1dp"
-            android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_cap">
-            <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
-            <ImageView android:id="@+id/widget_secondary_reveal_cap_fill"
-                android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="right|top"
+            <ViewFlipper android:id="@+id/widget_reveal_body" android:layout_width="1dp" android:layout_height="1dp"
+                android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_body">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+                <ImageView android:id="@+id/widget_reveal_body_fill"
+                    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#282828" />
+            </ViewFlipper>
+            <ViewFlipper android:id="@+id/widget_reveal_cap" android:layout_width="1dp" android:layout_height="1dp"
+                android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_cap">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+                <ImageView android:id="@+id/widget_reveal_cap_fill"
+                    android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="right|top"
+                    android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
+            </ViewFlipper>
+        </FrameLayout>
+    </ViewFlipper>
+    <ViewFlipper android:id="@+id/widget_secondary_reveal" android:layout_width="1dp" android:layout_height="1dp"
+        android:visibility="gone" android:importantForAccessibility="noHideDescendants"
+        android:autoStart="false" android:animateFirstView="true"
+        android:inAnimation="@anim/widget_reveal_appear">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+            <ImageView android:id="@+id/widget_secondary_reveal_left" android:layout_width="1dp" android:layout_height="1dp"
                 android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
-        </ViewFlipper>
-    </FrameLayout>
+            <ViewFlipper android:id="@+id/widget_secondary_reveal_body" android:layout_width="1dp" android:layout_height="1dp"
+                android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_body">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+                <ImageView android:id="@+id/widget_secondary_reveal_body_fill"
+                    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#282828" />
+            </ViewFlipper>
+            <ViewFlipper android:id="@+id/widget_secondary_reveal_cap" android:layout_width="1dp" android:layout_height="1dp"
+                android:autoStart="false" android:animateFirstView="true" android:inAnimation="@anim/widget_reveal_cap">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" />
+                <ImageView android:id="@+id/widget_secondary_reveal_cap_fill"
+                    android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="right|top"
+                    android:src="@drawable/widget_reveal_circle" android:scaleType="fitXY" />
+            </ViewFlipper>
+        </FrameLayout>
+    </ViewFlipper>
     <ImageButton android:id="@+id/widget_refresh" android:layout_width="44dp" android:layout_height="44dp"
         android:background="@drawable/widget_refresh_background" android:src="@drawable/ic_widget_refresh"
         android:padding="11dp" android:scaleType="fitCenter" android:contentDescription="在桌面刷新额度" />

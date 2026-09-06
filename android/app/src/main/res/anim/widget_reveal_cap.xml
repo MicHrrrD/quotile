@@ -2,7 +2,7 @@
 <!-- Parent width W, cap width H: combined translation is -(W-H) to zero.
      With right gravity this moves the constant-size cap from x=0 to x=W-H. -->
 <set xmlns:android="http://schemas.android.com/apk/res/android"
-    android:duration="720" android:fillAfter="true" android:shareInterpolator="true"
+    android:duration="900" android:fillAfter="true" android:shareInterpolator="true"
     android:interpolator="@interpolator/widget_reveal_ease">
     <translate android:fromXDelta="-100%p" android:toXDelta="0"
         android:fromYDelta="0" android:toYDelta="0" />

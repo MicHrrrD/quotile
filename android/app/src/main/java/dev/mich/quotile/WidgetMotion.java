@@ -9,8 +9,8 @@ import android.os.PowerManager;
 /** The launcher renders every animation frame; the app only starts and settles the reveal. */
 final class WidgetMotion {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    // Native view animations last 720ms. Allow a short handoff before caching static views.
-    private static final long SETTLE_MS = 800L;
+    // Native view animations last 900ms. The target bar is already prepared underneath.
+    private static final long SETTLE_MS = 980L;
     private static volatile Reveal current;
 
     private WidgetMotion() {}
