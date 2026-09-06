@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cubic ease-out with linear time along the Bezier x axis. -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.33333333" android:controlY1="1"
+    android:controlX2="0.66666667" android:controlY2="1" />

@@ -14,22 +14,30 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Animatable;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.SizeF;
 import android.view.View;
+import android.view.Choreographer;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
+import android.view.animation.Transformation;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.RemoteViews;
 import android.widget.TextView;
+import android.widget.ViewFlipper;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -49,7 +57,7 @@ final class WidgetMotionTests {
             assertFrames(instrumentation, app, previews, 250, 235, false, dark, 75d, null);
             assertFrames(instrumentation, app, previews, 350, 180, true, dark, 75d, 42d);
         }
-        for (Double amount : new Double[]{0d, 100d, null})
+        for (Double amount : new Double[]{0d, .1d, 100d, null})
             assertFrames(instrumentation, app, previews, 350, 180, true, false, amount, amount);
         assertAttachedSpinner(instrumentation, app, previews);
         assertHostDelivery(instrumentation, app, previews);
@@ -73,32 +81,99 @@ final class WidgetMotionTests {
             ProgressBar second = card.findViewById(R.id.widget_secondary_progress);
             Rect primaryBounds = bounds(primary), secondBounds = bounds(second);
             int secondVisibility = second.getVisibility();
-            float[] fractions = {0f, .2f, .5f, 1f};
-            for (int frame = 0; frame < fractions.length; frame++) {
-                float fraction = fractions[frame];
-                WidgetMotion.progressFrame(app, state, fraction).reapply(app, card);
-                layout(card, width, height);
-                require(primary.getProgress() == expected(weekly, fraction), "Native primary progress frame");
-                require(second.getProgress() == expected(dual ? secondary : null, fraction),
-                        "Native secondary progress frame");
-                require(bounds(primary).equals(primaryBounds) && bounds(second).equals(secondBounds),
-                        "Reveal changes fill only, preserving original bar position and height");
-                require(second.getVisibility() == secondVisibility, "Reveal must not make hidden quota rows visible");
-                for (int i = 0; i < TEXT_IDS.length; i++) {
-                    TextView label = card.findViewById(TEXT_IDS[i]);
-                    require(labels[i].equals(label.getText().toString()) && positions[i].equals(bounds(label)),
-                            "Reveal must preserve exact text and balanced content spacing");
-                }
-                if (weekly != null && weekly == 75d) {
-                    if (fraction > 0f) assertCapsulePixels(primary, dark);
-                    if (dual && fraction > 0f) assertCapsulePixels(second, dark);
-                    if (!dark || width == 250)
-                        save(draw(card), previews, "motion-" + width + "x" + height
-                                + (dual ? "-dual" : "-weekly") + (dark ? "-dark" : "-light")
-                                + "-frame-" + frame + ".png");
-                }
+            Bitmap original = draw(card);
+            WidgetRenderer.remoteViews(app, width, height, state, dark, false, true, true)
+                    .reapply(app, card);
+            layout(card, width, height);
+            require(bounds(primary).equals(primaryBounds) && bounds(second).equals(secondBounds),
+                    "Reveal preserves the exact original bar position and height");
+            require(second.getVisibility() == secondVisibility, "Reveal does not expose a hidden quota row");
+            for (int i = 0; i < TEXT_IDS.length; i++) {
+                TextView label = card.findViewById(TEXT_IDS[i]);
+                require(labels[i].equals(label.getText().toString()) && positions[i].equals(bounds(label)),
+                        "Reveal preserves all text and the balanced content spacing");
             }
+            assertNativeReveal(card, primary, weekly, false);
+            assertNativeReveal(card, second, dual ? secondary : null, true);
+            // Settling uses the original native bar, with bit-exact final pixels.
+            WidgetRenderer.remoteViews(app, width, height, state, dark, false, true, false)
+                    .reapply(app, card);
+            layout(card, width, height);
+            require(primary.getProgress() == expected(weekly) && second.getProgress() == expected(dual ? secondary : null),
+                    "Settled bars retain the exact saved percentages");
+            require(card.findViewById(R.id.widget_reveal).getVisibility() == View.GONE
+                            && card.findViewById(R.id.widget_secondary_reveal).getVisibility() == View.GONE,
+                    "Settling removes both native reveal layers");
+            Bitmap settled = draw(card);
+            require(original.sameAs(settled), "Native reveal settles into the original pixel-identical widget");
+            original.recycle(); settled.recycle();
+            if (weekly != null && weekly == 75d) {
+                assertCapsulePixels(primary, dark);
+                if (dual) assertCapsulePixels(second, dark);
+            }
+
         });
+    }
+
+    private static void assertNativeReveal(ViewGroup card, ProgressBar bar, Double amount, boolean secondary) {
+        ViewGroup overlay = card.findViewById(secondary ? R.id.widget_secondary_reveal : R.id.widget_reveal);
+        int target = (int) Math.ceil(bar.getWidth() * expected(amount) / 10000d);
+        boolean eligible = bar.getVisibility() == View.VISIBLE && target > bar.getHeight();
+        require((overlay.getVisibility() == View.VISIBLE) == eligible,
+                "Zero, unknown and tiny quotas use the unchanged native static capsule");
+        if (!eligible) return;
+        require(bar.getProgress() == 0, "Native reveal overlays the empty original track");
+        require(overlay.getLeft() == bar.getLeft() && overlay.getTop() == bar.getTop()
+                        && overlay.getWidth() == target && overlay.getHeight() == bar.getHeight(),
+                "Native reveal target exactly matches the original ScaleDrawable fill geometry");
+        ViewFlipper body = card.findViewById(secondary ? R.id.widget_secondary_reveal_body : R.id.widget_reveal_body);
+        ViewFlipper cap = card.findViewById(secondary ? R.id.widget_secondary_reveal_cap : R.id.widget_reveal_cap);
+        View left = card.findViewById(secondary ? R.id.widget_secondary_reveal_left : R.id.widget_reveal_left);
+        View capFill = cap.getCurrentView();
+        int diameter = bar.getHeight();
+        require(left.getWidth() == diameter && left.getHeight() == diameter
+                        && capFill.getWidth() == diameter && capFill.getHeight() == diameter,
+                "Both end caps keep the original bar's circular diameter");
+        require(!overlay.isClickable() && !overlay.isFocusable(), "Reveal layers never consume widget taps");
+        assertNativeTimesteps(body.getCurrentView(), body, false);
+        assertNativeTimesteps(capFill, cap, true);
+    }
+
+    /** Exercise the host's continuous native interpolation at 60 and 120 Hz timestamps.
+     * This checks frame-rate independence, not a claim about cloud emulator throughput. */
+    private static void assertNativeTimesteps(View fill, ViewGroup parent, boolean cap) {
+        Animation original = fill.getAnimation();
+        require(original != null && original.getDuration() == 720,
+                "Displayed reveal child owns a finite 720 ms native animation");
+        for (int refreshRate : new int[]{60, 120}) {
+            Animation animation = AnimationUtils.loadAnimation(fill.getContext(),
+                    cap ? R.anim.widget_reveal_cap : R.anim.widget_reveal_body);
+            animation.reset();
+            animation.initialize(fill.getWidth(), fill.getHeight(), parent.getWidth(), parent.getHeight());
+            animation.setStartTime(1000);
+            Transformation transform = new Transformation();
+            float[] matrix = new float[9];
+            int distinct = 0;
+            float previous = -Float.MAX_VALUE;
+            int samples = (int) Math.ceil(720d * refreshRate / 1000d);
+            for (int frame = 0; frame <= samples; frame++) {
+                transform.clear();
+                long time = 1000 + Math.min(720, Math.round(frame * 1000d / refreshRate));
+                animation.getTransformation(time, transform);
+                transform.getMatrix().getValues(matrix);
+                float position = matrix[cap ? Matrix.MTRANS_X : Matrix.MSCALE_X];
+                require(position >= previous - .00001f, "Native interpolation advances monotonically without overshoot");
+                if (position != previous) distinct++;
+                if (cap) require(Math.abs(matrix[Matrix.MSCALE_X] - 1f) < .00001f
+                                && Math.abs(matrix[Matrix.MSCALE_Y] - 1f) < .00001f,
+                        "Moving cap translates without scaling or squaring its circular edge");
+                else require(position >= 0f && position <= 1f, "Native body stays inside the true quota extent");
+                previous = position;
+            }
+            require(distinct >= samples - 1,
+                    "Native animation supplies distinct positions at " + refreshRate + " Hz, without a low-rate step table");
+            require(Math.abs(previous - (cap ? 0f : 1f)) < .00001f, "Native animation finishes at the exact original capsule");
+        }
     }
 
     private static void assertCapsulePixels(ProgressBar bar, boolean dark) {
@@ -131,9 +206,20 @@ final class WidgetMotionTests {
         ViewGroup[] card = new ViewGroup[1];
         try {
             for (boolean dark : new boolean[]{false, true}) {
+                RectF[] idleGlyph = new RectF[1];
                 onMain(instrumentation, () -> {
                     card[0] = (ViewGroup) WidgetRenderer.remoteViews(app, 350, 180,
-                            state(75d, 42d), dark, true, true).apply(app, new FrameLayout(app));
+                            state(75d, 42d), dark, false, true).apply(app, new FrameLayout(app));
+                    layout(card[0], 350, 180);
+                    ImageButton idle = card[0].findViewById(R.id.widget_refresh);
+                    // ImageView may scale its intrinsic vector through an image matrix.
+                    idleGlyph[0] = new RectF(idle.getDrawable().getBounds());
+                    idle.getImageMatrix().mapRect(idleGlyph[0]);
+                    idleGlyph[0].offset(idle.getLeft() + idle.getPaddingLeft(),
+                            idle.getTop() + idle.getPaddingTop());
+                    WidgetRenderer.remoteViews(app, 350, 180, state(75d, 42d), dark, true, true)
+                            .reapply(app, card[0]);
+                    layout(card[0], 350, 180);
                     FrameLayout root = new FrameLayout(activity);
                     root.addView(card[0], new FrameLayout.LayoutParams(dp(app, 350), dp(app, 180)));
                     activity.setContentView(root);
@@ -146,6 +232,19 @@ final class WidgetMotionTests {
                     ProgressBar spinner = card[0].findViewById(dark
                             ? R.id.widget_refresh_spinner_dark : R.id.widget_refresh_spinner);
                     ImageButton refresh = card[0].findViewById(R.id.widget_refresh);
+                    RectF spinningGlyph = new RectF(spinner.getIndeterminateDrawable().getBounds());
+                    spinningGlyph.offset(spinner.getLeft() + spinner.getPaddingLeft(),
+                            spinner.getTop() + spinner.getPaddingTop());
+                    require(Math.abs(idleGlyph[0].left - spinningGlyph.left) <= .5f
+                                    && Math.abs(idleGlyph[0].top - spinningGlyph.top) <= .5f
+                                    && Math.abs(idleGlyph[0].right - spinningGlyph.right) <= .5f
+                                    && Math.abs(idleGlyph[0].bottom - spinningGlyph.bottom) <= .5f,
+                            "Idle and spinning arrows occupy the same exact image bounds [idle="
+                                    + idleGlyph[0] + ", spinning=" + spinningGlyph + "]");
+                    require(bounds(refresh).equals(bounds(spinner))
+                                    && refresh.getPaddingLeft() == spinner.getPaddingLeft()
+                                    && refresh.getPaddingTop() == spinner.getPaddingTop(),
+                            "Tapping starts rotation without changing button size or glyph padding");
                     require(spinner.isShown() && spinner.getIndeterminateDrawable() instanceof Animatable,
                             "Busy widget hosts a native animated refresh arrow");
                     require(((Animatable) spinner.getIndeterminateDrawable()).isRunning(),
@@ -193,6 +292,7 @@ final class WidgetMotionTests {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         RecordingHost[] host = new RecordingHost[1];
         RecordingView[] card = new RecordingView[1];
+        FrameProbe probe = new FrameProbe();
         try {
             onMain(instrumentation, () -> {
                 host[0] = new RecordingHost(app);
@@ -216,42 +316,65 @@ final class WidgetMotionTests {
                 host[0].startListening();
                 WidgetUpdate.updateAll(app);
             });
-            SystemClock.sleep(250);
+            // Drain initial provider/options delivery before counting refresh publications.
+            SystemClock.sleep(400);
             instrumentation.waitForIdleSync();
             CountDownLatch completed = new CountDownLatch(1);
             AtomicInteger callbacks = new AtomicInteger();
             onMain(instrumentation, () -> {
                 card[0].recording = true;
                 card[0].frames.clear();
+                card[0].revealDelivered = new CountDownLatch(1);
+                card[0].settledDelivered = new CountDownLatch(1);
+                probe.start();
                 WidgetMotion.reveal(app, store.generation(), () -> {
                     callbacks.incrementAndGet(); completed.countDown();
                 });
                 require(WidgetMotion.isRunning(), "Successful refresh starts a finite reveal for bound widgets");
             });
-            SystemClock.sleep(200);
-            Bitmap mid = screenshot(instrumentation, card[0]);
+            require(card[0].revealDelivered.await(2, TimeUnit.SECONDS),
+                    "Actual AppWidgetService must deliver the native reveal layout");
+            SystemClock.sleep(30);
+            Bitmap early = screenshot(instrumentation, card[0]);
+            SystemClock.sleep(120);
+            Bitmap later = screenshot(instrumentation, card[0]);
+            onMain(instrumentation, () -> {
+                ProgressBar first = card[0].findViewById(R.id.widget_progress);
+                Rect bar = boundsIn(card[0], first);
+                int earlyEdge = assertCapsuleFrame(early, bar, false);
+                int laterEdge = assertCapsuleFrame(later, bar, false);
+                require(laterEdge > earlyEdge + 2,
+                        "Actual hardware-rendered capsule must advance between elapsed native frames ["
+                                + earlyEdge + " -> " + laterEdge + "]");
+            });
             require(completed.await(3, TimeUnit.SECONDS), "Reveal must finish promptly and release its callback");
+            require(card[0].settledDelivered.await(2, TimeUnit.SECONDS),
+                    "AppWidgetService delivers the final accurate quota after native motion");
             instrumentation.waitForIdleSync();
             onMain(instrumentation, () -> {
-                boolean zero = false, intermediate = false;
-                int previous = -1;
-                for (int[] frame : card[0].frames) {
-                    if (frame[0] == 0) { zero = true; previous = 0; }
-                    if (!zero) continue;
-                    require(frame[0] >= previous, "Host receives monotonically increasing pill fill");
-                    require(frame[0] <= 6800 && frame[1] <= 8400, "Reveal must never overshoot actual quotas");
-                    if (frame[0] > 0 && frame[0] < 6800 && frame[1] > 0 && frame[1] < 8400)
-                        intermediate = true;
-                    previous = frame[0];
-                }
-                require(zero && intermediate && previous == 6800,
-                        "Actual AppWidgetService must deliver every reveal phase through sized RemoteViews");
+                probe.stop();
+                require(card[0].frames.size() == 2,
+                        "AppWidgetService receives only reveal start and final data, never per-frame IPC [updates="
+                                + card[0].frames.size() + "]");
+                require(card[0].frames.get(0)[0] == 0 && card[0].frames.get(0)[1] == 0
+                                && card[0].frames.get(1)[0] == 6800 && card[0].frames.get(1)[1] == 8400,
+                        "Host receives the original empty tracks followed by precise saved quota values");
                 ProgressBar second = card[0].findViewById(R.id.widget_secondary_progress);
                 require(second != null && second.getProgress() == 8400, "Final dual quota is accurate in the host");
-                require(!WidgetMotion.isRunning() && WidgetMotion.fraction() == 1f && callbacks.get() == 1,
+                require(!WidgetMotion.isRunning() && callbacks.get() == 1,
                         "Finite reveal ends with full data and a single completion callback");
+                require(probe.times.size() >= 8,
+                        "Launcher host receives display frame callbacks throughout the native reveal");
             });
-            save(mid, previews, "motion-host-elapsed-middle.png");
+            Bundle metrics = new Bundle();
+            metrics.putString("stream", "MOTION: native AppWidgetHost publications=" + card[0].frames.size()
+                    + "; display=" + activity.getDisplay().getRefreshRate() + " Hz; Choreographer callbacks="
+                    + probe.times.size() + "; median frame interval=" + probe.medianIntervalMs()
+                    + " ms. Continuous native transforms verified at 60 and 120 Hz sample times;"
+                    + " emulator timings are measurements, not a device frame-rate guarantee.\n");
+            instrumentation.sendStatus(0, metrics);
+            save(early, previews, "motion-host-elapsed-early.png");
+            save(later, previews, "motion-host-elapsed-later.png");
             save(screenshot(instrumentation, card[0]), previews, "motion-host-completed.png");
 
             AtomicInteger cancelledCallbacks = new AtomicInteger();
@@ -263,8 +386,7 @@ final class WidgetMotionTests {
             onMain(instrumentation, WidgetMotion::cancel);
             SystemClock.sleep(850);
             onMain(instrumentation, () -> {
-                require(!WidgetMotion.isRunning() && WidgetMotion.fraction() == 1f
-                                && cancelledCallbacks.get() == 1,
+                require(!WidgetMotion.isRunning() && cancelledCallbacks.get() == 1,
                         "Cancellation settles once and leaves no reveal loop running");
                 require(((ProgressBar) card[0].findViewById(R.id.widget_progress)).getProgress() == 6800,
                         "Cancelling an animation restores true saved usage");
@@ -274,6 +396,7 @@ final class WidgetMotionTests {
                     "Transient widget motion must not schedule background work");
         } finally {
             onMain(instrumentation, () -> {
+                probe.stop();
                 WidgetMotion.cancel();
                 if (host[0] != null) { host[0].stopListening(); host[0].deleteHost(); }
                 activity.finish();
@@ -291,14 +414,57 @@ final class WidgetMotionTests {
     private static final class RecordingView extends AppWidgetHostView {
         boolean recording;
         final List<int[]> frames = new ArrayList<>();
+        CountDownLatch revealDelivered;
+        CountDownLatch settledDelivered;
         RecordingView(Context context) { super(context); }
         @Override public void updateAppWidget(RemoteViews views) {
             super.updateAppWidget(views);
             ProgressBar first = findViewById(R.id.widget_progress);
             ProgressBar second = findViewById(R.id.widget_secondary_progress);
-            if (recording && first != null && second != null)
+            if (recording && first != null && second != null) {
                 frames.add(new int[]{first.getProgress(), second.getProgress()});
+                View reveal = findViewById(R.id.widget_reveal);
+                if (revealDelivered != null && reveal != null && reveal.getVisibility() == View.VISIBLE)
+                    revealDelivered.countDown();
+                if (settledDelivered != null && first.getProgress() == 6800 && second.getProgress() == 8400)
+                    settledDelivered.countDown();
+            }
         }
+    }
+
+    private static final class FrameProbe implements Choreographer.FrameCallback {
+        final List<Long> times = new ArrayList<>();
+        boolean active;
+        void start() { active = true; Choreographer.getInstance().postFrameCallback(this); }
+        void stop() { active = false; Choreographer.getInstance().removeFrameCallback(this); }
+        @Override public void doFrame(long frameTimeNanos) {
+            if (!active) return;
+            times.add(frameTimeNanos);
+            Choreographer.getInstance().postFrameCallback(this);
+        }
+        double medianIntervalMs() {
+            List<Long> intervals = new ArrayList<>();
+            for (int i = 1; i < times.size(); i++) intervals.add(times.get(i) - times.get(i - 1));
+            Collections.sort(intervals);
+            return intervals.get(intervals.size() / 2) / 1000000d;
+        }
+    }
+    private static Rect boundsIn(ViewGroup root, View child) {
+        Rect area = new Rect(0, 0, child.getWidth(), child.getHeight());
+        root.offsetDescendantRectToMyCoords(child, area);
+        return area;
+    }
+    private static int assertCapsuleFrame(Bitmap bitmap, Rect bar, boolean dark) {
+        int edge = -1, middle = bar.top + bar.height() / 2;
+        for (int x = bar.left; x < bar.right; x++)
+            if (isFill(bitmap.getPixel(x, middle), dark)) edge = x;
+        require(edge > bar.left + 2, "Actual native reveal frame contains a visible capsule");
+        int inset = Math.max(1, bar.height() / 8), top = bar.top + Math.max(0, bar.height() / 10);
+        require(isFill(bitmap.getPixel(edge - inset, middle), dark)
+                        && !isFill(bitmap.getPixel(edge - inset, top), dark)
+                        && !isFill(bitmap.getPixel(bar.left + inset, top), dark),
+                "Actual moving fill retains both circular caps instead of a vertical clipped edge");
+        return edge;
     }
 
     private static WidgetState state(Double weekly, Double secondary) {
@@ -308,8 +474,8 @@ final class WidgetMotionTests {
         state.fiveHourRemaining = secondary;
         return state;
     }
-    private static int expected(Double amount, float fraction) {
-        return amount == null ? 0 : Math.round((float) (amount * 100) * fraction);
+    private static int expected(Double amount) {
+        return amount == null ? 0 : (int) Math.round(amount * 100);
     }
     private static int dp(Context context, int value) {
         return Math.round(context.getResources().getDisplayMetrics().density * value);

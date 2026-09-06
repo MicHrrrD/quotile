@@ -29,6 +29,9 @@ try:
     run(['adb','shell','wm','size','1080x2400'])
     run(['adb','shell','wm','density','320'])
     run(['adb','shell','settings','put','global','animator_duration_scale','1'])
+    # Display changes send system configuration broadcasts. Drain them before the
+    # signed-out refresh broadcast's existing five-second completion gate.
+    run(['adb','shell','am','wait-for-broadcast-idle'], timeout=30)
     # Raw mode preserves INSTRUMENTATION_CODE even when the runner returns a stream.
     output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
 finally:

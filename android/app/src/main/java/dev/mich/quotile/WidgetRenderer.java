@@ -25,16 +25,22 @@ public final class WidgetRenderer {
     private final float width, height;
     private final WidgetState state;
     private final boolean refreshing;
+    private final boolean reveal;
+    private final boolean dark;
+    private final float density;
     private float contentOffsetY;
     private final long now = System.currentTimeMillis() / 1000L;
     private final int ink, secondary, muted, track, accent;
 
     private WidgetRenderer(Context context, int widthDp, int heightDp, WidgetState snapshot,
-                           boolean dark, boolean busy, boolean animateRefresh) {
+                           boolean dark, boolean busy, boolean animateRefresh, boolean reveal) {
         width = Math.max(110, Math.min(700, widthDp));
         height = Math.max(40, Math.min(300, heightDp));
         state = snapshot == null ? new WidgetState() : snapshot;
         refreshing = busy;
+        this.dark = dark;
+        this.reveal = reveal && animateRefresh && !busy;
+        density = context.getResources().getDisplayMetrics().density;
         ink = Color.parseColor(dark ? "#F5F5F5" : "#181818");
         secondary = Color.parseColor(dark ? "#B5B5B5" : "#5E5E5E");
         muted = Color.parseColor(dark ? "#A3A3A3" : "#707070");
@@ -51,8 +57,14 @@ public final class WidgetRenderer {
                 R.id.widget_reset, R.id.widget_reset_count, R.id.widget_reset_expiry,
                 R.id.widget_secondary_label, R.id.widget_secondary_value, R.id.widget_secondary_reset,
                 R.id.widget_status, R.id.widget_progress, R.id.widget_secondary_progress,
-                R.id.widget_refresh_spinner, R.id.widget_refresh_spinner_dark})
+                R.id.widget_refresh_spinner, R.id.widget_refresh_spinner_dark,
+                R.id.widget_reveal, R.id.widget_secondary_reveal})
             views.setViewVisibility(id, View.GONE);
+        // Selecting the empty child clears a prior fill animation on host reapply.
+        // These flippers never auto-start or repeat; idle overlays remain GONE.
+        for (int id : new int[]{R.id.widget_reveal_body, R.id.widget_reveal_cap,
+                R.id.widget_secondary_reveal_body, R.id.widget_secondary_reveal_cap})
+            views.setDisplayedChild(id, 0);
         if (!state.configured) unconfigured();
         else if (height < 110) compact();
         else if (width >= 250 && state.fiveHourRemaining != null) detail();
@@ -61,6 +73,11 @@ public final class WidgetRenderer {
         box(R.id.widget_refresh, width - 49, Math.max(0, refreshY), 44, Math.min(44, height));
         views.setInt(R.id.widget_refresh, "setBackgroundResource",
                 dark ? R.drawable.widget_refresh_background_dark : R.drawable.widget_refresh_background);
+        // Setting a background may replace ImageButton's XML padding. Set it last
+        // so the idle glyph has exactly the spinner's 22dp drawing area.
+        int refreshPadding = Math.round(11 * density);
+        views.setViewPadding(R.id.widget_refresh, refreshPadding, refreshPadding,
+                refreshPadding, refreshPadding);
         boolean spinning = refreshing && animateRefresh;
         views.setImageViewResource(R.id.widget_refresh, spinning ? android.R.color.transparent : refreshing
                 ? (dark ? R.drawable.ic_widget_wait_dark : R.drawable.ic_widget_wait)
@@ -87,7 +104,15 @@ public final class WidgetRenderer {
                                           WidgetState state, boolean dark, boolean refreshing,
                                           boolean animateRefresh) {
         return new WidgetRenderer(context, widthDp, heightDp, state, dark, refreshing,
-                animateRefresh).views;
+                animateRefresh, false).views;
+    }
+
+    /** The launcher draws the short reveal locally at its native display cadence. */
+    public static RemoteViews remoteViews(Context context, int widthDp, int heightDp,
+                                          WidgetState state, boolean dark, boolean refreshing,
+                                          boolean animateRefresh, boolean reveal) {
+        return new WidgetRenderer(context, widthDp, heightDp, state, dark, refreshing,
+                animateRefresh, reveal).views;
     }
 
     /** Settings-only preview. The actual home widget never transports or scales this bitmap. */
@@ -322,9 +347,45 @@ public final class WidgetRenderer {
         box(id, x, y, width, height);
         int progress = percent == null || !Double.isFinite(percent) ? 0
                 : (int)Math.round(Math.max(0, Math.min(100, percent)) * 100);
-        views.setProgressBar(id, 10000, progress, false);
+        int widthPx = Math.max(1, Math.round(width * density));
+        int heightPx = Math.max(1, Math.round(height * density));
+        // Match ScaleDrawable's physical-pixel rounding, avoiding a final 1px jump.
+        int fillPx = widthPx - (int) (widthPx * (10000 - progress) / 10000f);
+        boolean animate = reveal && progress > 0 && fillPx > heightPx;
+        views.setProgressBar(id, 10000, animate ? 0 : progress, false);
         views.setColorStateList(id, "setProgressTintList", ColorStateList.valueOf(accent));
         views.setColorStateList(id, "setProgressBackgroundTintList", ColorStateList.valueOf(track));
+        if (animate) revealBar(id == R.id.widget_secondary_progress, x, y, fillPx, heightPx);
+    }
+
+    /** Only the rectangular middle scales; both end caps keep their original radius. */
+    private void revealBar(boolean secondaryBar, float x, float y, int fillPx, int heightPx) {
+        int overlay = secondaryBar ? R.id.widget_secondary_reveal : R.id.widget_reveal;
+        int left = secondaryBar ? R.id.widget_secondary_reveal_left : R.id.widget_reveal_left;
+        int body = secondaryBar ? R.id.widget_secondary_reveal_body : R.id.widget_reveal_body;
+        int bodyFill = secondaryBar ? R.id.widget_secondary_reveal_body_fill : R.id.widget_reveal_body_fill;
+        int cap = secondaryBar ? R.id.widget_secondary_reveal_cap : R.id.widget_reveal_cap;
+        int capFill = secondaryBar ? R.id.widget_secondary_reveal_cap_fill : R.id.widget_reveal_cap_fill;
+        box(overlay, x, y, fillPx / density, heightPx / density);
+        // Sizes are in physical pixels, shared by both animations and final progress.
+        sizePx(overlay, fillPx, heightPx);
+        sizePx(left, heightPx, heightPx);
+        sizePx(body, fillPx - heightPx, heightPx);
+        views.setViewLayoutMargin(body, RemoteViews.MARGIN_LEFT, heightPx / 2f,
+                TypedValue.COMPLEX_UNIT_PX);
+        sizePx(cap, fillPx, heightPx);
+        sizePx(capFill, heightPx, heightPx);
+        int circle = dark ? R.drawable.widget_reveal_circle_dark : R.drawable.widget_reveal_circle;
+        views.setImageViewResource(left, circle);
+        views.setImageViewResource(capFill, circle);
+        views.setInt(bodyFill, "setBackgroundColor", accent);
+        views.setDisplayedChild(body, 1);
+        views.setDisplayedChild(cap, 1);
+    }
+
+    private void sizePx(int id, int width, int height) {
+        views.setViewLayoutWidth(id, width, TypedValue.COMPLEX_UNIT_PX);
+        views.setViewLayoutHeight(id, height, TypedValue.COMPLEX_UNIT_PX);
     }
 
     private boolean expired(long reset) { return reset > 0 && now >= reset; }
