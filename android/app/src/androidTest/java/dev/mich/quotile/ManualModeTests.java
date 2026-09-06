@@ -85,6 +85,7 @@ public final class ManualModeTests extends Instrumentation {
             File previews = new File(app.getFilesDir(),"widget-previews");
             require(previews.isDirectory() || previews.mkdirs(),"Preview directory");
             WidgetFooterTests.run(this, app, previews);
+            WidgetMotionTests.run(this, app, previews);
             int[][] sizes = {{350,64},{350,150},{700,150},{160,150},{110,40},{110,64}};
             for (boolean dark : new boolean[]{false,true}) {
                 for (int[] size : sizes) {
@@ -106,7 +107,7 @@ public final class ManualModeTests extends Instrumentation {
             waitForIdleSync();
             require(!QuotaSync.isRunning(),"Reopening/theme change must not refresh");
             require(app.getSystemService(JobScheduler.class).getAllPendingJobs().isEmpty(),"Theme/launcher must not schedule");
-            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 base native widget render cases plus mixed-script footer, reset-credit, font-scale and Codex source layout cases; OAuth callback, PKCE, quota/reset parser, encrypted vault and synthetic device-login contracts passed.\n");
+            result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 base native widget render cases plus mixed-script footer, reset-credit, font-scale and Codex source layout cases; true AppWidgetHost receives sized reveal frames with rounded ends; hardware spinner changes over elapsed time and stops when hidden; reduced motion and reveal completion/cancellation remain offline; OAuth callback, PKCE, quota/reset parser, encrypted vault and synthetic device-login contracts passed.\n");
             resultCode = Activity.RESULT_OK;
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + error.getClass().getSimpleName()+": "+error.getMessage()+"\n");

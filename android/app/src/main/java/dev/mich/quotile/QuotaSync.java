@@ -18,6 +18,7 @@ public final class QuotaSync {
         final AtomicBoolean cancelled = new AtomicBoolean(false);
         final AtomicBoolean callbackDelivered = new AtomicBoolean(false);
         boolean workerFinished;
+        boolean readSucceeded;
         Thread broadcastWatch;
         Operation(boolean automatic, boolean widget) {
             this.automatic = automatic;
@@ -105,6 +106,7 @@ public final class QuotaSync {
                             if (allowed.getAsBoolean()) {
                                 store.saveSnapshot(snapshot, generation);
                                 resultSaved = true;
+                                operation.readSucceeded = store.generation() == generation;
                             }
                         }
                     }
@@ -131,8 +133,20 @@ public final class QuotaSync {
                     if (current == operation) current = null;
                 }
                 main.post(() -> {
-                    try { updateWidgets(app); }
-                    finally { deliverCallback.run(); }
+                    // Leave enough of the existing broadcast budget for the short reveal.
+                    // Failures, cancelled reads and replaced accounts always settle directly.
+                    if (operation.readSucceeded && !operation.cancelled.get()
+                            && store.generation() == generation && !isRunning()
+                            && SystemClock.elapsedRealtime() < operation.deadline - 1000L) {
+                        try { WidgetMotion.reveal(app, generation, deliverCallback); }
+                        catch (RuntimeException unavailableHost) {
+                            try { updateWidgets(app); }
+                            finally { deliverCallback.run(); }
+                        }
+                    } else {
+                        try { updateWidgets(app); }
+                        finally { deliverCallback.run(); }
+                    }
                 });
             }
         }, automatic ? "quotile-opted-in-refresh" : "quotile-user-refresh").start();

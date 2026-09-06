@@ -14,8 +14,20 @@ def run(args, timeout=90):
 
 run(['adb','install','-r',str(ROOT/'android/app/build/outputs/apk/debug/app-debug.apk')])
 run(['adb','install','-r',str(ROOT/'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')])
-# Raw mode preserves INSTRUMENTATION_CODE even when the runner returns a stream.
-output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
+# The disposable emulator hosts its own widget to exercise AppWidgetService's real
+# sized-RemoteViews delivery. Restore both grants/settings afterwards.
+animation_scale = run(['adb','shell','settings','get','global','animator_duration_scale']).strip()
+run(['adb','shell','appwidget','grantbind','--package','dev.mich.quotile','--user','0'])
+try:
+    run(['adb','shell','settings','put','global','animator_duration_scale','1'])
+    # Raw mode preserves INSTRUMENTATION_CODE even when the runner returns a stream.
+    output = run(['adb','shell','am','instrument','-w','-r','dev.mich.quotile.test/dev.mich.quotile.ManualModeTests'])
+finally:
+    run(['adb','shell','appwidget','revokebind','--package','dev.mich.quotile','--user','0'])
+    if animation_scale == 'null':
+        run(['adb','shell','settings','delete','global','animator_duration_scale'])
+    else:
+        run(['adb','shell','settings','put','global','animator_duration_scale',animation_scale])
 if 'INSTRUMENTATION_CODE: -1' not in output or 'PASS: settings launch' not in output or 'FAIL:' in output:
     raise RuntimeError('Manual-mode instrumentation did not pass')
 print('Android 16 manual-mode verification passed.')

@@ -83,4 +83,16 @@
     <ImageButton android:id="@+id/widget_refresh" android:layout_width="44dp" android:layout_height="44dp"
         android:background="@drawable/widget_refresh_background" android:src="@drawable/ic_widget_refresh"
         android:padding="11dp" android:scaleType="fitCenter" android:contentDescription="在桌面刷新额度" />
+    <!-- ProgressBar starts/stops the vector in the launcher, without per-frame app updates.
+         Keep the original button underneath as the sole click/accessibility target. -->
+    <ProgressBar android:id="@+id/widget_refresh_spinner" android:layout_width="44dp" android:layout_height="44dp"
+        android:visibility="gone" android:padding="11dp" android:minWidth="0dp" android:minHeight="0dp"
+        android:indeterminate="true" android:indeterminateOnly="true" android:indeterminateTint="#383838"
+        android:indeterminateDrawable="@drawable/widget_refresh_spin"
+        android:clickable="false" android:focusable="false" android:importantForAccessibility="no" />
+    <ProgressBar android:id="@+id/widget_refresh_spinner_dark" android:layout_width="44dp" android:layout_height="44dp"
+        android:visibility="gone" android:padding="11dp" android:minWidth="0dp" android:minHeight="0dp"
+        android:indeterminate="true" android:indeterminateOnly="true" android:indeterminateTint="#E8E8E8"
+        android:indeterminateDrawable="@drawable/widget_refresh_spin_dark"
+        android:clickable="false" android:focusable="false" android:importantForAccessibility="no" />
 </FrameLayout>

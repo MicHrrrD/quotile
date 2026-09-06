@@ -33,8 +33,8 @@ jobs:
         run: python tools/build_android.py
       - name: Verify APK signature and manifest
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Quotile-0.3.6.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Quotile-0.3.6.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Quotile-0.3.7.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Quotile-0.3.7.apk
       - name: Build manual-mode instrumentation
         run: gradle --no-daemon --console=plain -p android :app:assembleDebugAndroidTest
       - name: Free disk space for the Android emulator
@@ -61,13 +61,13 @@ jobs:
       - name: Package official signing tool
         run: |
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" dist/apksigner.jar
-          sha256sum dist/Quotile-0.3.6.apk dist/apksigner.jar > dist/build-sha256.txt
+          sha256sum dist/Quotile-0.3.7.apk dist/apksigner.jar > dist/build-sha256.txt
       - name: Upload tested build and preview images
         uses: actions/upload-artifact@v4
         with:
-          name: Quotile-0.3.6-build
+          name: Quotile-0.3.7-build
           path: |
-            dist/Quotile-0.3.6.apk
+            dist/Quotile-0.3.7.apk
             dist/apksigner.jar
             dist/build-sha256.txt
             design/android-previews/*.png

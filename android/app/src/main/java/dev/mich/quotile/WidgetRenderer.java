@@ -1,5 +1,6 @@
 package dev.mich.quotile;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -29,7 +30,7 @@ public final class WidgetRenderer {
     private final int ink, secondary, muted, track, accent;
 
     private WidgetRenderer(Context context, int widthDp, int heightDp, WidgetState snapshot,
-                           boolean dark, boolean busy) {
+                           boolean dark, boolean busy, boolean animateRefresh) {
         width = Math.max(110, Math.min(700, widthDp));
         height = Math.max(40, Math.min(300, heightDp));
         state = snapshot == null ? new WidgetState() : snapshot;
@@ -49,7 +50,8 @@ public final class WidgetRenderer {
         for (int id : new int[]{R.id.widget_source_icon, R.id.widget_label, R.id.widget_value,
                 R.id.widget_reset, R.id.widget_reset_count, R.id.widget_reset_expiry,
                 R.id.widget_secondary_label, R.id.widget_secondary_value, R.id.widget_secondary_reset,
-                R.id.widget_status, R.id.widget_progress, R.id.widget_secondary_progress})
+                R.id.widget_status, R.id.widget_progress, R.id.widget_secondary_progress,
+                R.id.widget_refresh_spinner, R.id.widget_refresh_spinner_dark})
             views.setViewVisibility(id, View.GONE);
         if (!state.configured) unconfigured();
         else if (height < 110) compact();
@@ -59,9 +61,16 @@ public final class WidgetRenderer {
         box(R.id.widget_refresh, width - 49, Math.max(0, refreshY), 44, Math.min(44, height));
         views.setInt(R.id.widget_refresh, "setBackgroundResource",
                 dark ? R.drawable.widget_refresh_background_dark : R.drawable.widget_refresh_background);
-        views.setImageViewResource(R.id.widget_refresh, refreshing
+        boolean spinning = refreshing && animateRefresh;
+        views.setImageViewResource(R.id.widget_refresh, spinning ? android.R.color.transparent : refreshing
                 ? (dark ? R.drawable.ic_widget_wait_dark : R.drawable.ic_widget_wait)
                 : (dark ? R.drawable.ic_widget_refresh_dark : R.drawable.ic_widget_refresh));
+        if (spinning) {
+            // The launcher animates this vector locally. Its finite 27-second duration
+            // cannot leave an endless spinner if the app process disappears mid-read.
+            int spinner = dark ? R.id.widget_refresh_spinner_dark : R.id.widget_refresh_spinner;
+            box(spinner, width - 49, Math.max(0, refreshY), 44, Math.min(44, height));
+        }
         views.setContentDescription(R.id.widget_refresh, refreshing ? "正在刷新额度" : "在桌面刷新额度");
         views.setBoolean(R.id.widget_refresh, "setEnabled", !refreshing);
     }
@@ -69,7 +78,16 @@ public final class WidgetRenderer {
     /** Stateless native layout, also exposed for inflation and visual verification. */
     public static RemoteViews remoteViews(Context context, int widthDp, int heightDp,
                                           WidgetState state, boolean dark, boolean refreshing) {
-        return new WidgetRenderer(context, widthDp, heightDp, state, dark, refreshing).views;
+        return remoteViews(context, widthDp, heightDp, state, dark, refreshing,
+                ValueAnimator.areAnimatorsEnabled());
+    }
+
+    /** Explicit motion choice also allows verification of the reduced-motion fallback. */
+    public static RemoteViews remoteViews(Context context, int widthDp, int heightDp,
+                                          WidgetState state, boolean dark, boolean refreshing,
+                                          boolean animateRefresh) {
+        return new WidgetRenderer(context, widthDp, heightDp, state, dark, refreshing,
+                animateRefresh).views;
     }
 
     /** Settings-only preview. The actual home widget never transports or scales this bitmap. */
@@ -269,7 +287,9 @@ public final class WidgetRenderer {
         views.setViewLayoutHeight(id, Math.max(1, height), TypedValue.COMPLEX_UNIT_DIP);
         views.setViewLayoutMargin(id, RemoteViews.MARGIN_LEFT, x, TypedValue.COMPLEX_UNIT_DIP);
         views.setViewLayoutMargin(id, RemoteViews.MARGIN_TOP,
-                y + (id == R.id.widget_refresh ? 0 : contentOffsetY), TypedValue.COMPLEX_UNIT_DIP);
+                y + (id == R.id.widget_refresh || id == R.id.widget_refresh_spinner
+                        || id == R.id.widget_refresh_spinner_dark ? 0 : contentOffsetY),
+                TypedValue.COMPLEX_UNIT_DIP);
     }
 
     private void label(int id, String value, float x, float y, float width, float height, int color) {

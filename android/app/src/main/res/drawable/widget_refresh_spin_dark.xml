@@ -1,0 +1,4 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_widget_refresh_rotatable_dark">
+    <target android:name="refresh_rotation" android:animation="@animator/widget_refresh_rotation" />
+</animated-vector>
