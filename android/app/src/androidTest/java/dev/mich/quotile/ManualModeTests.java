@@ -110,7 +110,10 @@ public final class ManualModeTests extends Instrumentation {
             result.putString("stream", "PASS: settings launch, reopen, launcher callbacks and theme changes remain offline with auto OFF; opt-in defaults and task cancellation; widget broadcast does not launch an Activity; 24 base native widget render cases plus mixed-script footer, reset-credit, font-scale and Codex source layout cases; true AppWidgetHost receives sized reveal frames with rounded ends; hardware spinner changes over elapsed time and stops when hidden; reduced motion and reveal completion/cancellation remain offline; OAuth callback, PKCE, quota/reset parser, encrypted vault and synthetic device-login contracts passed.\n");
             resultCode = Activity.RESULT_OK;
         } catch (Throwable error) {
-            result.putString("stream", "FAIL: " + error.getClass().getSimpleName()+": "+error.getMessage()+"\n");
+            java.io.StringWriter trace = new java.io.StringWriter();
+            error.printStackTrace(new java.io.PrintWriter(trace));
+            result.putString("stream", "FAIL: " + error.getClass().getSimpleName()+": "+error.getMessage()
+                    + "\n" + trace);
         } finally {
             if(activity!=null) { Activity last=activity; runOnMainSync(last::finish); }
         }

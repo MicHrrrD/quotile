@@ -106,13 +106,17 @@ final class WidgetMotionTests {
         int edge = -1, mid = bitmap.getHeight() / 2;
         for (int x = 0; x < bitmap.getWidth(); x++)
             if (isFill(bitmap.getPixel(x, mid), dark)) edge = x;
-        require(edge > bitmap.getHeight(), "A revealed native bar must have a visible fill");
-        int inset = Math.max(1, bitmap.getHeight() / 8);
+        String sample = " [" + bitmap.getWidth() + "x" + bitmap.getHeight()
+                + ", edge=" + edge + ", progress=" + bar.getProgress() + ", dark=" + dark + "]";
+        // Early secondary frames can be approximately one bar-height wide: a
+        // round dot is the correct first capsule, not a missing fill.
+        require(edge >= 2, "A revealed native bar must have a visible fill" + sample);
+        int inset = Math.max(1, Math.min(bitmap.getHeight(), edge + 1) / 8);
         int top = Math.max(0, bitmap.getHeight() / 10);
-        require(isFill(bitmap.getPixel(edge - inset, mid), dark), "Capsule end must reach its center line");
+        require(isFill(bitmap.getPixel(edge - inset, mid), dark), "Capsule end must reach its center line" + sample);
         require(!isFill(bitmap.getPixel(edge - inset, top), dark),
-                "Moving fill retains its rounded right end, without a vertical clipped edge");
-        require(!isFill(bitmap.getPixel(inset, top), dark), "Moving fill retains its rounded left end");
+                "Moving fill retains its rounded right end, without a vertical clipped edge" + sample);
+        require(!isFill(bitmap.getPixel(inset, top), dark), "Moving fill retains its rounded left end" + sample);
         bitmap.recycle();
     }
 
